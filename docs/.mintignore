@@ -1,0 +1,21 @@
+# Exclude files that are not part of the documentation
+deploystack.md
+adding-new-microservice.md
+cloudshell-tutorial.md
+development-guide.md
+product-requirements.md
+purpose.md
+WORK_COMPLETED.md
+IMPLEMENTATION_STATUS.md
+
+# Exclude test and script directories
+__tests__/
+scripts/
+node_modules/
+releasing/
+
+# Exclude configuration files
+package.json
+package-lock.json
+jest.config.js
+.gitignore
