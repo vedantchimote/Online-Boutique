@@ -1,0 +1,545 @@
+---
+title: Prerequisites
+description: Required tools and setup for working with Online Boutique
+icon: list-check
+---
+
+This page lists all the tools and requirements needed to deploy and develop Online Boutique. Choose the installation method that matches your deployment target.
+
+## For GKE Deployment
+
+If you're deploying to Google Kubernetes Engine, you'll need these tools:
+
+### Google Cloud SDK (gcloud)
+
+The `gcloud` CLI is required for managing Google Cloud resources.
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    # Using Homebrew
+    brew install google-cloud-sdk
+    
+    # Or download the installer
+    curl https://sdk.cloud.google.com | bash
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    # Debian/Ubuntu
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+    sudo apt-get update && sudo apt-get install google-cloud-sdk
+    
+    # Or use the installer
+    curl https://sdk.cloud.google.com | bash
+    ```
+  </Tab>
+  <Tab title="Windows">
+    Download and run the [Google Cloud SDK installer](https://cloud.google.com/sdk/docs/install#windows)
+  </Tab>
+</Tabs>
+
+**Verify installation:**
+```bash
+gcloud version
+```
+
+**Initialize gcloud:**
+```bash
+gcloud init
+gcloud auth login
+```
+
+### kubectl
+
+Kubernetes command-line tool for managing clusters.
+
+<Tabs>
+  <Tab title="Via gcloud">
+    ```bash
+    gcloud components install kubectl
+    ```
+  </Tab>
+  <Tab title="macOS (Homebrew)">
+    ```bash
+    brew install kubectl
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    # Using Chocolatey
+    choco install kubernetes-cli
+    
+    # Or download from https://kubernetes.io/docs/tasks/tools/install-kubectl-windows/
+    ```
+  </Tab>
+</Tabs>
+
+**Verify installation:**
+```bash
+kubectl version --client
+```
+
+### Git
+
+Version control system for cloning the repository.
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    # Usually pre-installed, or use Homebrew
+    brew install git
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    # Debian/Ubuntu
+    sudo apt-get install git
+    
+    # RHEL/CentOS
+    sudo yum install git
+    ```
+  </Tab>
+  <Tab title="Windows">
+    Download from [git-scm.com](https://git-scm.com/download/win)
+  </Tab>
+</Tabs>
+
+**Verify installation:**
+```bash
+git --version
+```
+
+### Google Cloud Project
+
+You'll need a Google Cloud project with billing enabled:
+
+1. [Create a new project](https://console.cloud.google.com/projectcreate) or select an existing one
+2. [Enable billing](https://cloud.google.com/billing/docs/how-to/verify-billing-enabled) for the project
+3. Note your project ID for use in deployment commands
+
+## For Local Development
+
+For local development and testing, you'll need additional tools:
+
+### Docker
+
+Container runtime for building and running containers locally.
+
+<Tabs>
+  <Tab title="macOS">
+    Download [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop)
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    # Ubuntu
+    sudo apt-get update
+    sudo apt-get install docker.io
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    # Add your user to docker group
+    sudo usermod -aG docker $USER
+    ```
+  </Tab>
+  <Tab title="Windows">
+    Download [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop)
+  </Tab>
+</Tabs>
+
+**Verify installation:**
+```bash
+docker --version
+docker run hello-world
+```
+
+### Skaffold
+
+Development tool for building and deploying to Kubernetes.
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    brew install skaffold
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64
+    sudo install skaffold /usr/local/bin/
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    choco install skaffold
+    ```
+  </Tab>
+</Tabs>
+
+**Verify installation:**
+```bash
+skaffold version
+```
+
+<Note>
+  Skaffold version 2.0.2 or later is recommended.
+</Note>
+
+### Local Kubernetes Cluster
+
+Choose one of these options for running Kubernetes locally:
+
+<Tabs>
+  <Tab title="Minikube">
+    **Best for**: Linux users, learning Kubernetes
+    
+    ```bash
+    # macOS
+    brew install minikube
+    
+    # Linux
+    curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+    sudo install minikube-linux-amd64 /usr/local/bin/minikube
+    
+    # Windows
+    choco install minikube
+    ```
+    
+    **Start Minikube:**
+    ```bash
+    minikube start --cpus=4 --memory=4096 --disk-size=32g
+    ```
+    
+    **Minimum requirements:**
+    - 4 CPUs
+    - 4 GB RAM
+    - 32 GB disk space
+  </Tab>
+  
+  <Tab title="Kind">
+    **Best for**: CI/CD, lightweight testing
+    
+    ```bash
+    # macOS
+    brew install kind
+    
+    # Linux
+    curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+    chmod +x ./kind
+    sudo mv ./kind /usr/local/bin/kind
+    
+    # Windows
+    choco install kind
+    ```
+    
+    **Create cluster:**
+    ```bash
+    kind create cluster
+    ```
+  </Tab>
+  
+  <Tab title="Docker Desktop">
+    **Best for**: macOS and Windows users
+    
+    1. Install Docker Desktop
+    2. Go to Settings/Preferences
+    3. Select "Kubernetes" tab
+    4. Check "Enable Kubernetes"
+    5. Set resources:
+       - CPUs: at least 3
+       - Memory: at least 6 GB
+       - Disk: at least 32 GB
+    6. Click "Apply & Restart"
+  </Tab>
+</Tabs>
+
+**Verify cluster:**
+```bash
+kubectl cluster-info
+kubectl get nodes
+```
+
+## For Terraform Deployment
+
+If you're using Terraform for infrastructure as code:
+
+### Terraform
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    brew tap hashicorp/tap
+    brew install hashicorp/tap/terraform
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+    sudo apt update && sudo apt install terraform
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    choco install terraform
+    ```
+  </Tab>
+</Tabs>
+
+**Verify installation:**
+```bash
+terraform --version
+```
+
+## For Helm Deployment
+
+If you're using Helm for package management:
+
+### Helm
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    brew install helm
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    choco install kubernetes-helm
+    ```
+  </Tab>
+</Tabs>
+
+**Verify installation:**
+```bash
+helm version
+```
+
+## Development Tools (Optional)
+
+These tools are helpful for development but not required:
+
+### Language-Specific Tools
+
+Depending on which microservice you're working on:
+
+<AccordionGroup>
+  <Accordion title="Go (Frontend, Product Catalog, Shipping, Checkout)" icon="golang">
+    ```bash
+    # macOS
+    brew install go
+    
+    # Linux
+    wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
+    sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
+    export PATH=$PATH:/usr/local/go/bin
+    
+    # Verify
+    go version
+    ```
+  </Accordion>
+  
+  <Accordion title="Node.js (Currency, Payment)" icon="node-js">
+    ```bash
+    # macOS
+    brew install node
+    
+    # Linux (using nvm)
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+    nvm install --lts
+    
+    # Verify
+    node --version
+    npm --version
+    ```
+  </Accordion>
+  
+  <Accordion title="Python (Email, Recommendation, Load Generator)" icon="python">
+    ```bash
+    # macOS
+    brew install python@3.11
+    
+    # Linux
+    sudo apt-get install python3.11 python3-pip
+    
+    # Verify
+    python3 --version
+    pip3 --version
+    ```
+  </Accordion>
+  
+  <Accordion title=".NET (Cart Service)" icon="microsoft">
+    Download from [dotnet.microsoft.com](https://dotnet.microsoft.com/download)
+    
+    ```bash
+    # Verify
+    dotnet --version
+    ```
+  </Accordion>
+  
+  <Accordion title="Java (Ad Service)" icon="java">
+    ```bash
+    # macOS
+    brew install openjdk@17
+    
+    # Linux
+    sudo apt-get install openjdk-17-jdk
+    
+    # Verify
+    java --version
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Protocol Buffers Compiler
+
+For working with gRPC service definitions:
+
+```bash
+# macOS
+brew install protobuf
+
+# Linux
+sudo apt-get install protobuf-compiler
+
+# Verify
+protoc --version
+```
+
+### IDE Recommendations
+
+<CardGroup cols={2}>
+  <Card title="VS Code" icon="code">
+    Lightweight, great extension ecosystem
+    - Kubernetes extension
+    - Docker extension
+    - Language-specific extensions
+  </Card>
+  <Card title="IntelliJ IDEA" icon="lightbulb">
+    Full-featured IDE for Java/Kotlin
+    - Kubernetes plugin
+    - Docker plugin
+  </Card>
+  <Card title="GoLand" icon="golang">
+    Specialized IDE for Go development
+    - Built-in Kubernetes support
+  </Card>
+  <Card title="PyCharm" icon="python">
+    Python-focused IDE
+    - Docker integration
+    - Kubernetes support
+  </Card>
+</CardGroup>
+
+## System Requirements
+
+### Minimum Requirements
+
+For running Online Boutique locally:
+
+- **CPU**: 4 cores
+- **RAM**: 8 GB
+- **Disk**: 40 GB free space
+- **OS**: macOS 10.15+, Ubuntu 20.04+, Windows 10+
+
+### Recommended Requirements
+
+For comfortable development:
+
+- **CPU**: 8 cores
+- **RAM**: 16 GB
+- **Disk**: 100 GB free space (SSD recommended)
+- **Network**: Stable internet connection for pulling images
+
+## Verification Checklist
+
+Before proceeding with deployment, verify you have:
+
+<Steps>
+  <Step title="Cloud Tools">
+    ✅ `gcloud` installed and authenticated  
+    ✅ `kubectl` installed  
+    ✅ Google Cloud project created with billing enabled
+  </Step>
+  
+  <Step title="Development Tools">
+    ✅ `git` installed  
+    ✅ `docker` installed and running  
+    ✅ `skaffold` installed (for local development)
+  </Step>
+  
+  <Step title="Kubernetes Cluster">
+    ✅ GKE cluster created OR  
+    ✅ Local cluster running (Minikube/Kind/Docker Desktop)
+  </Step>
+  
+  <Step title="Optional Tools">
+    ✅ `terraform` installed (if using Terraform)  
+    ✅ `helm` installed (if using Helm)  
+    ✅ Language-specific tools (if developing)
+  </Step>
+</Steps>
+
+## Next Steps
+
+Once you have the prerequisites installed:
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/getting-started/quickstart">
+    Deploy to GKE in minutes
+  </Card>
+  <Card title="Local Setup" icon="laptop-code" href="/getting-started/local-setup">
+    Set up local development environment
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="gcloud authentication issues" icon="circle-exclamation">
+    ```bash
+    # Re-authenticate
+    gcloud auth login
+    gcloud auth application-default login
+    
+    # Set project
+    gcloud config set project YOUR_PROJECT_ID
+    ```
+  </Accordion>
+  
+  <Accordion title="kubectl cannot connect to cluster" icon="circle-exclamation">
+    ```bash
+    # For GKE
+    gcloud container clusters get-credentials CLUSTER_NAME --region REGION
+    
+    # For Minikube
+    minikube start
+    
+    # Verify
+    kubectl cluster-info
+    ```
+  </Accordion>
+  
+  <Accordion title="Docker permission denied" icon="circle-exclamation">
+    ```bash
+    # Linux: Add user to docker group
+    sudo usermod -aG docker $USER
+    newgrp docker
+    
+    # Verify
+    docker ps
+    ```
+  </Accordion>
+</AccordionGroup>

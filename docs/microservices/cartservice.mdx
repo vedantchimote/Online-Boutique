@@ -1,0 +1,646 @@
+---
+title: Cart Service
+description: Shopping cart management with Redis backend
+icon: cart-shopping
+---
+
+The Cart Service manages shopping cart operations for Online Boutique. It stores cart data in Redis and provides gRPC APIs for adding, retrieving, and emptying carts.
+
+## Overview
+
+The Cart Service is responsible for:
+- Storing cart items per user session
+- Adding items to carts
+- Retrieving cart contents
+- Emptying carts after checkout
+- Managing cart persistence in Redis
+
+## Technology Stack
+
+- **Language**: C# (.NET 8)
+- **Framework**: ASP.NET Core
+- **Database**: Redis
+- **gRPC**: Grpc.AspNetCore
+- **Port**: 7070 (gRPC)
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Redis Storage" icon="database">
+    Fast in-memory storage with 24-hour TTL
+  </Card>
+  <Card title="Session-Based" icon="user">
+    Cart tied to user session ID
+  </Card>
+  <Card title="gRPC API" icon="bolt">
+    High-performance Protocol Buffer interface
+  </Card>
+  <Card title="Alternative Backends" icon="layer-group">
+    Supports Spanner and AlloyDB via Kustomize
+  </Card>
+</CardGroup>
+
+## Service Dependencies
+
+### Depends On
+
+| Service | Purpose | Required |
+|---------|---------|----------|
+| **Redis** | Cart data storage | Yes |
+
+### Used By
+
+| Service | Purpose |
+|---------|---------|
+| **Frontend** | Display and manage cart |
+| **Checkout Service** | Retrieve cart for order processing |
+
+## gRPC API
+
+### Service Definition
+
+```protobuf
+service CartService {
+    rpc AddItem(AddItemRequest) returns (Empty) {}
+    rpc GetCart(GetCartRequest) returns (Cart) {}
+    rpc EmptyCart(EmptyCartRequest) returns (Empty) {}
+}
+
+message CartItem {
+    string product_id = 1;
+    int32 quantity = 2;
+}
+
+message AddItemRequest {
+    string user_id = 1;
+    CartItem item = 2;
+}
+
+message GetCartRequest {
+    string user_id = 1;
+}
+
+message EmptyCartRequest {
+    string user_id = 1;
+}
+
+message Cart {
+    string user_id = 1;
+    repeated CartItem items = 2;
+}
+```
+
+### Methods
+
+#### AddItem
+
+Adds an item to the user's cart or updates quantity if item exists.
+
+**Request**: `AddItemRequest`
+```json
+{
+  "user_id": "session_abc123",
+  "item": {
+    "product_id": "OLJCESPC7Z",
+    "quantity": 2
+  }
+}
+```
+
+**Response**: `Empty`
+
+**Behavior**:
+- If item exists: Updates quantity
+- If item doesn't exist: Adds new item
+- If quantity is 0: Removes item
+
+#### GetCart
+
+Retrieves the user's cart contents.
+
+**Request**: `GetCartRequest`
+```json
+{
+  "user_id": "session_abc123"
+}
+```
+
+**Response**: `Cart`
+```json
+{
+  "user_id": "session_abc123",
+  "items": [
+    {
+      "product_id": "OLJCESPC7Z",
+      "quantity": 2
+    },
+    {
+      "product_id": "66VCHSJNUP",
+      "quantity": 1
+    }
+  ]
+}
+```
+
+#### EmptyCart
+
+Removes all items from the user's cart.
+
+**Request**: `EmptyCartRequest`
+```json
+{
+  "user_id": "session_abc123"
+}
+```
+
+**Response**: `Empty`
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `PORT` | gRPC server port | `7070` | No |
+| `REDIS_ADDR` | Redis server address | `redis-cart:6379` | Yes |
+| `LISTEN_ADDR` | Server listen address | `0.0.0.0:7070` | No |
+
+### Example Configuration
+
+```yaml
+env:
+- name: PORT
+  value: "7070"
+- name: REDIS_ADDR
+  value: "redis-cart:6379"
+- name: LISTEN_ADDR
+  value: "0.0.0.0:7070"
+```
+
+## Redis Data Model
+
+### Key Structure
+
+```
+Key: cart:{user_id}
+Value: Serialized Cart protobuf
+TTL: 86400 seconds (24 hours)
+```
+
+### Example Redis Data
+
+```bash
+# Get cart for user
+redis-cli GET "cart:session_abc123"
+
+# Output (binary protobuf, decoded):
+{
+  "user_id": "session_abc123",
+  "items": [
+    {"product_id": "OLJCESPC7Z", "quantity": 2},
+    {"product_id": "66VCHSJNUP", "quantity": 1}
+  ]
+}
+
+# Check TTL
+redis-cli TTL "cart:session_abc123"
+# Output: 86400
+```
+
+### Redis Operations
+
+```csharp
+// Add/Update item
+public async Task AddItemAsync(string userId, CartItem item)
+{
+    var cart = await GetCartAsync(userId) ?? new Cart { UserId = userId };
+    
+    var existingItem = cart.Items.FirstOrDefault(i => i.ProductId == item.ProductId);
+    if (existingItem != null)
+    {
+        if (item.Quantity == 0)
+        {
+            cart.Items.Remove(existingItem);
+        }
+        else
+        {
+            existingItem.Quantity = item.Quantity;
+        }
+    }
+    else if (item.Quantity > 0)
+    {
+        cart.Items.Add(item);
+    }
+    
+    await _redis.StringSetAsync(
+        $"cart:{userId}",
+        cart.ToByteArray(),
+        TimeSpan.FromDays(1)
+    );
+}
+
+// Get cart
+public async Task<Cart> GetCartAsync(string userId)
+{
+    var data = await _redis.StringGetAsync($"cart:{userId}");
+    if (data.IsNullOrEmpty)
+    {
+        return new Cart { UserId = userId };
+    }
+    return Cart.Parser.ParseFrom(data);
+}
+
+// Empty cart
+public async Task EmptyCartAsync(string userId)
+{
+    await _redis.KeyDeleteAsync($"cart:{userId}");
+}
+```
+
+## Alternative Backends
+
+### Spanner
+
+Use Cloud Spanner for globally distributed cart storage:
+
+```yaml
+# Deploy with Spanner
+kubectl apply -k kustomize/components/spanner
+```
+
+**Schema**:
+```sql
+CREATE TABLE carts (
+  user_id STRING(MAX) NOT NULL,
+  items ARRAY<STRUCT<product_id STRING(MAX), quantity INT64>>,
+  updated_at TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+) PRIMARY KEY (user_id);
+```
+
+### AlloyDB
+
+Use AlloyDB for PostgreSQL-compatible storage:
+
+```yaml
+# Deploy with AlloyDB
+kubectl apply -k kustomize/components/alloydb
+```
+
+**Schema**:
+```sql
+CREATE TABLE carts (
+  user_id VARCHAR(255) PRIMARY KEY,
+  items JSONB NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## Local Development
+
+### Prerequisites
+
+- .NET 8 SDK
+- Redis server
+- Protocol Buffer compiler
+
+### Running Locally
+
+```bash
+# Navigate to cart service directory
+cd src/cartservice/src
+
+# Restore dependencies
+dotnet restore
+
+# Run Redis locally
+docker run -d -p 6379:6379 redis:alpine
+
+# Set environment variables
+export REDIS_ADDR=localhost:6379
+export PORT=7070
+
+# Run the service
+dotnet run
+```
+
+### Running with Docker
+
+```bash
+# Build image
+docker build -t cartservice:dev src/cartservice/src
+
+# Run container
+docker run -p 7070:7070 \
+  -e REDIS_ADDR=redis:6379 \
+  cartservice:dev
+```
+
+### Testing
+
+```bash
+# Run unit tests
+cd src/cartservice/tests
+dotnet test
+
+# Run with coverage
+dotnet test /p:CollectCoverage=true
+```
+
+## Deployment
+
+### Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cartservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cartservice
+  template:
+    metadata:
+      labels:
+        app: cartservice
+    spec:
+      containers:
+      - name: server
+        image: cartservice:latest
+        ports:
+        - containerPort: 7070
+        env:
+        - name: REDIS_ADDR
+          value: "redis-cart:6379"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 128Mi
+        livenessProbe:
+          grpc:
+            port: 7070
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          grpc:
+            port: 7070
+          initialDelaySeconds: 10
+          periodSeconds: 5
+```
+
+### Redis Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-cart
+  template:
+    metadata:
+      labels:
+        app: redis-cart
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: 70m
+            memory: 200Mi
+          limits:
+            cpu: 125m
+            memory: 256Mi
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cart
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-cart
+  ports:
+  - port: 6379
+    targetPort: 6379
+```
+
+## Monitoring
+
+### Key Metrics
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| **Request Rate** | gRPC requests per second | - |
+| **Error Rate** | Percentage of failed requests | > 1% |
+| **Latency (p95)** | 95th percentile response time | > 50ms |
+| **Redis Latency** | Redis operation latency | > 10ms |
+| **Cache Hit Rate** | Percentage of successful gets | < 90% |
+| **Memory Usage** | Service memory utilization | > 80% |
+
+### Health Checks
+
+```bash
+# Check gRPC health
+grpcurl -plaintext localhost:7070 grpc.health.v1.Health/Check
+
+# Check Redis connectivity
+redis-cli -h redis-cart PING
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Cart data not persisting" icon="circle-exclamation">
+    **Symptoms**: Cart empties on page refresh
+    
+    **Possible Causes**:
+    - Redis connection issues
+    - Session ID changing
+    - TTL expired
+    
+    **Solutions**:
+    ```bash
+    # Check Redis connectivity
+    kubectl exec -it cartservice-pod -- nc -zv redis-cart 6379
+    
+    # Check Redis logs
+    kubectl logs -l app=redis-cart
+    
+    # Verify cart data in Redis
+    kubectl exec -it redis-cart-pod -- redis-cli KEYS "cart:*"
+    
+    # Check TTL
+    kubectl exec -it redis-cart-pod -- redis-cli TTL "cart:session_id"
+    ```
+  </Accordion>
+  
+  <Accordion title="High latency" icon="circle-exclamation">
+    **Symptoms**: Slow cart operations
+    
+    **Possible Causes**:
+    - Redis overloaded
+    - Network latency
+    - Large cart data
+    
+    **Solutions**:
+    ```bash
+    # Check Redis performance
+    kubectl exec -it redis-cart-pod -- redis-cli --latency
+    
+    # Monitor Redis operations
+    kubectl exec -it redis-cart-pod -- redis-cli MONITOR
+    
+    # Scale cart service
+    kubectl scale deployment/cartservice --replicas=5
+    ```
+  </Accordion>
+  
+  <Accordion title="Redis connection errors" icon="circle-exclamation">
+    **Symptoms**: gRPC errors, cart operations fail
+    
+    **Possible Causes**:
+    - Redis pod down
+    - Network policy blocking
+    - Wrong Redis address
+    
+    **Solutions**:
+    ```bash
+    # Check Redis pod status
+    kubectl get pods -l app=redis-cart
+    
+    # Check service endpoints
+    kubectl get endpoints redis-cart
+    
+    # Test connectivity
+    kubectl exec -it cartservice-pod -- nc -zv redis-cart 6379
+    
+    # Check environment variables
+    kubectl exec -it cartservice-pod -- env | grep REDIS
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimization
+
+### Connection Pooling
+
+```csharp
+// Configure Redis connection pool
+var redis = ConnectionMultiplexer.Connect(new ConfigurationOptions
+{
+    EndPoints = { redisAddr },
+    ConnectTimeout = 5000,
+    SyncTimeout = 5000,
+    AbortOnConnectFail = false,
+    ConnectRetry = 3,
+});
+```
+
+### Batch Operations
+
+```csharp
+// Batch multiple cart operations
+var batch = _redis.CreateBatch();
+var tasks = new List<Task>();
+
+foreach (var userId in userIds)
+{
+    tasks.Add(batch.StringGetAsync($"cart:{userId}"));
+}
+
+batch.Execute();
+await Task.WhenAll(tasks);
+```
+
+### Compression
+
+```csharp
+// Compress large cart data
+public byte[] Compress(byte[] data)
+{
+    using var output = new MemoryStream();
+    using (var gzip = new GZipStream(output, CompressionMode.Compress))
+    {
+        gzip.Write(data, 0, data.Length);
+    }
+    return output.ToArray();
+}
+```
+
+## Security Considerations
+
+### Input Validation
+
+```csharp
+public override async Task<Empty> AddItem(AddItemRequest request, ServerCallContext context)
+{
+    // Validate user ID
+    if (string.IsNullOrWhiteSpace(request.UserId))
+    {
+        throw new RpcException(new Status(StatusCode.InvalidArgument, "User ID is required"));
+    }
+    
+    // Validate product ID
+    if (string.IsNullOrWhiteSpace(request.Item.ProductId))
+    {
+        throw new RpcException(new Status(StatusCode.InvalidArgument, "Product ID is required"));
+    }
+    
+    // Validate quantity
+    if (request.Item.Quantity < 0 || request.Item.Quantity > 100)
+    {
+        throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid quantity"));
+    }
+    
+    await _cartStore.AddItemAsync(request.UserId, request.Item);
+    return new Empty();
+}
+```
+
+### Redis Security
+
+```yaml
+# Use Redis with authentication
+env:
+- name: REDIS_ADDR
+  value: "redis-cart:6379"
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: redis-secret
+      key: password
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Frontend Service" icon="window-maximize" href="/microservices/frontend">
+    See how frontend uses the cart
+  </Card>
+  <Card title="Checkout Service" icon="cash-register" href="/microservices/checkoutservice">
+    Learn about order processing
+  </Card>
+  <Card title="Redis Configuration" icon="database" href="/deployment/optional-components">
+    Configure Redis alternatives
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Understand the complete system
+  </Card>
+</CardGroup>

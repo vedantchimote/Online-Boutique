@@ -1,0 +1,687 @@
+---
+title: Product Catalog Service
+description: Product inventory management and search functionality
+icon: box
+---
+
+The Product Catalog Service manages the product inventory for Online Boutique. It provides APIs for listing products, searching by keyword, and retrieving individual product details.
+
+## Overview
+
+The Product Catalog Service:
+- Stores product data in a JSON file
+- Provides product listing and search
+- Serves product details
+- Supports dynamic catalog reloading
+- Includes latency injection for testing
+
+## Technology Stack
+
+- **Language**: Go 1.21+
+- **Framework**: Standard library
+- **Data Storage**: JSON file (`products.json`)
+- **gRPC**: `google.golang.org/grpc`
+- **Port**: 3550 (gRPC)
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="JSON-Based Storage" icon="file-code">
+    Simple file-based product catalog
+  </Card>
+  <Card title="In-Memory Caching" icon="bolt">
+    Fast product lookups from memory
+  </Card>
+  <Card title="Search Functionality" icon="magnifying-glass">
+    Keyword-based product search
+  </Card>
+  <Card title="Dynamic Reload" icon="rotate">
+    Reload catalog without restart (for testing)
+  </Card>
+</CardGroup>
+
+## Service Dependencies
+
+### Depends On
+
+None - This service has no external dependencies.
+
+### Used By
+
+| Service | Purpose |
+|---------|---------|
+| **Frontend** | Display products, search |
+| **Checkout Service** | Get product details for orders |
+| **Recommendation Service** | Get product details for recommendations |
+
+## gRPC API
+
+### Service Definition
+
+```protobuf
+service ProductCatalogService {
+    rpc ListProducts(Empty) returns (ListProductsResponse) {}
+    rpc GetProduct(GetProductRequest) returns (Product) {}
+    rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse) {}
+}
+
+message Product {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    string picture = 4;
+    Money price_usd = 5;
+    repeated string categories = 6;
+}
+
+message ListProductsResponse {
+    repeated Product products = 1;
+}
+
+message GetProductRequest {
+    string id = 1;
+}
+
+message SearchProductsRequest {
+    string query = 1;
+}
+
+message SearchProductsResponse {
+    repeated Product results = 1;
+}
+```
+
+### Methods
+
+#### ListProducts
+
+Returns all products in the catalog.
+
+**Request**: `Empty`
+
+**Response**: `ListProductsResponse`
+```json
+{
+  "products": [
+    {
+      "id": "OLJCESPC7Z",
+      "name": "Sunglasses",
+      "description": "Add a modern touch to your outfits with these sleek aviator sunglasses.",
+      "picture": "/static/img/products/sunglasses.jpg",
+      "price_usd": {
+        "currency_code": "USD",
+        "units": 19,
+        "nanos": 990000000
+      },
+      "categories": ["accessories"]
+    }
+  ]
+}
+```
+
+#### GetProduct
+
+Retrieves a single product by ID.
+
+**Request**: `GetProductRequest`
+```json
+{
+  "id": "OLJCESPC7Z"
+}
+```
+
+**Response**: `Product`
+```json
+{
+  "id": "OLJCESPC7Z",
+  "name": "Sunglasses",
+  "description": "Add a modern touch...",
+  "picture": "/static/img/products/sunglasses.jpg",
+  "price_usd": {
+    "currency_code": "USD",
+    "units": 19,
+    "nanos": 990000000
+  },
+  "categories": ["accessories"]
+}
+```
+
+**Errors**:
+- `NOT_FOUND`: Product ID doesn't exist
+
+#### SearchProducts
+
+Searches products by keyword.
+
+**Request**: `SearchProductsRequest`
+```json
+{
+  "query": "sunglasses"
+}
+```
+
+**Response**: `SearchProductsResponse`
+```json
+{
+  "results": [
+    {
+      "id": "OLJCESPC7Z",
+      "name": "Sunglasses",
+      "description": "Add a modern touch...",
+      "price_usd": {...},
+      "categories": ["accessories"]
+    }
+  ]
+}
+```
+
+**Search Algorithm**:
+- Case-insensitive matching
+- Searches in product name
+- Searches in product description
+- Returns all matching products
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `PORT` | gRPC server port | `3550` | No |
+| `EXTRA_LATENCY` | Artificial latency for testing | `""` | No |
+| `DISABLE_PROFILER` | Disable Cloud Profiler | `false` | No |
+| `DISABLE_TRACING` | Disable tracing | `false` | No |
+
+### Example Configuration
+
+```yaml
+env:
+- name: PORT
+  value: "3550"
+- name: EXTRA_LATENCY
+  value: "0ms"  # or "100ms" for testing
+```
+
+## Product Data
+
+### JSON File Structure
+
+```json
+{
+  "products": [
+    {
+      "id": "OLJCESPC7Z",
+      "name": "Sunglasses",
+      "description": "Add a modern touch to your outfits with these sleek aviator sunglasses.",
+      "picture": "/static/img/products/sunglasses.jpg",
+      "priceUsd": {
+        "currencyCode": "USD",
+        "units": 19,
+        "nanos": 990000000
+      },
+      "categories": ["accessories"]
+    },
+    {
+      "id": "66VCHSJNUP",
+      "name": "Tank Top",
+      "description": "Perfectly cropped cotton tank, with a scooped neckline.",
+      "picture": "/static/img/products/tank-top.jpg",
+      "priceUsd": {
+        "currencyCode": "USD",
+        "units": 18,
+        "nanos": 990000000
+      },
+      "categories": ["clothing", "tops"]
+    }
+  ]
+}
+```
+
+### Default Products
+
+The catalog includes 10 products:
+1. **OLJCESPC7Z** - Sunglasses ($19.99)
+2. **66VCHSJNUP** - Tank Top ($18.99)
+3. **1YMWWN1N4O** - Watch ($109.99)
+4. **L9ECAV7KIM** - Loafers ($89.99)
+5. **2ZYFJ3GM2N** - Film Camera ($2,245.00)
+6. **0PUK6V6EV0** - Vintage Camera Lens ($12.49)
+7. **LS4PSXUNUM** - Metal Camping Mug ($24.33)
+8. **9SIQT8TOJO** - City Bike ($789.50)
+9. **6E92ZMYYFZ** - Air Plant ($12.30)
+10. **GGOEGOAQ012** - Bamboo Glass Jar ($5.99)
+
+## Implementation Details
+
+### Loading Products
+
+```go
+func readProductsFile() ([]*pb.Product, error) {
+    file, err := os.Open("products.json")
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+    
+    var catalog struct {
+        Products []*pb.Product `json:"products"`
+    }
+    
+    if err := json.NewDecoder(file).Decode(&catalog); err != nil {
+        return nil, err
+    }
+    
+    return catalog.Products, nil
+}
+```
+
+### In-Memory Storage
+
+```go
+type productCatalog struct {
+    sync.RWMutex
+    products []*pb.Product
+}
+
+func (c *productCatalog) ListProducts() []*pb.Product {
+    c.RLock()
+    defer c.RUnlock()
+    return c.products
+}
+
+func (c *productCatalog) GetProduct(id string) (*pb.Product, error) {
+    c.RLock()
+    defer c.RUnlock()
+    
+    for _, p := range c.products {
+        if p.Id == id {
+            return p, nil
+        }
+    }
+    return nil, status.Errorf(codes.NotFound, "product not found: %s", id)
+}
+```
+
+### Search Implementation
+
+```go
+func (c *productCatalog) SearchProducts(query string) []*pb.Product {
+    c.RLock()
+    defer c.RUnlock()
+    
+    query = strings.ToLower(query)
+    var results []*pb.Product
+    
+    for _, p := range c.products {
+        if strings.Contains(strings.ToLower(p.Name), query) ||
+           strings.Contains(strings.ToLower(p.Description), query) {
+            results = append(results, p)
+        }
+    }
+    
+    return results
+}
+```
+
+## Dynamic Catalog Reloading
+
+### Feature Overview
+
+The service can reload the product catalog without restarting:
+
+```bash
+# Trigger catalog reload (enables reload on every request - for testing only!)
+kubectl exec $(kubectl get pods -l app=productcatalogservice -o jsonpath='{.items[0].metadata.name}') \
+  -c server -- kill -USR1 1
+
+# Disable reload (back to normal operation)
+kubectl exec $(kubectl get pods -l app=productcatalogservice -o jsonpath='{.items[0].metadata.name}') \
+  -c server -- kill -USR2 1
+```
+
+<Warning>
+  **Performance Impact**: When enabled, the catalog is reloaded on EVERY request, causing significant latency. This is intentionally buggy for demonstration purposes.
+</Warning>
+
+### Implementation
+
+```go
+func (s *server) setupSignalHandlers() {
+    sigs := make(chan os.Signal, 1)
+    signal.Notify(sigs, syscall.SIGUSR1, syscall.SIGUSR2)
+    
+    go func() {
+        for sig := range sigs {
+            switch sig {
+            case syscall.SIGUSR1:
+                s.reloadCatalog = true
+                log.Info("Catalog reload enabled")
+            case syscall.SIGUSR2:
+                s.reloadCatalog = false
+                log.Info("Catalog reload disabled")
+            }
+        }
+    }()
+}
+```
+
+## Latency Injection
+
+### Purpose
+
+Inject artificial latency for testing and demonstration:
+
+```yaml
+env:
+- name: EXTRA_LATENCY
+  value: "500ms"  # Add 500ms delay to every request
+```
+
+### Implementation
+
+```go
+func (s *server) ListProducts(ctx context.Context, req *pb.Empty) (*pb.ListProductsResponse, error) {
+    // Inject artificial latency
+    if s.extraLatency > 0 {
+        time.Sleep(s.extraLatency)
+    }
+    
+    products := s.catalog.ListProducts()
+    return &pb.ListProductsResponse{Products: products}, nil
+}
+```
+
+### Use Cases
+
+- **Performance Testing**: Simulate slow backend
+- **Timeout Testing**: Test timeout handling
+- **User Experience**: Demonstrate loading states
+- **Observability**: Generate traces with latency
+
+## Local Development
+
+### Prerequisites
+
+- Go 1.21 or later
+- Protocol Buffer compiler
+
+### Running Locally
+
+```bash
+# Navigate to service directory
+cd src/productcatalogservice
+
+# Install dependencies
+go mod download
+
+# Run the service
+go run main.go
+
+# Service listens on :3550
+```
+
+### Testing
+
+```bash
+# Run unit tests
+go test ./...
+
+# Run with coverage
+go test -cover ./...
+
+# Test with grpcurl
+grpcurl -plaintext localhost:3550 hipstershop.ProductCatalogService/ListProducts
+```
+
+### Modifying Products
+
+Edit `products.json` to add/modify products:
+
+```json
+{
+  "products": [
+    {
+      "id": "CUSTOM001",
+      "name": "Custom Product",
+      "description": "A custom product for testing",
+      "picture": "/static/img/products/custom.jpg",
+      "priceUsd": {
+        "currencyCode": "USD",
+        "units": 29,
+        "nanos": 990000000
+      },
+      "categories": ["custom", "test"]
+    }
+  ]
+}
+```
+
+## Deployment
+
+### Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productcatalogservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: productcatalogservice
+  template:
+    metadata:
+      labels:
+        app: productcatalogservice
+    spec:
+      containers:
+      - name: server
+        image: productcatalogservice:latest
+        ports:
+        - containerPort: 3550
+        env:
+        - name: PORT
+          value: "3550"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        livenessProbe:
+          grpc:
+            port: 3550
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          grpc:
+            port: 3550
+          initialDelaySeconds: 5
+          periodSeconds: 5
+```
+
+## Monitoring
+
+### Key Metrics
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| **Request Rate** | Requests per second | - |
+| **Error Rate** | Percentage of failed requests | > 0.5% |
+| **Latency (p95)** | 95th percentile response time | > 50ms |
+| **Memory Usage** | Service memory utilization | > 80% |
+| **Catalog Size** | Number of products | - |
+
+### Health Checks
+
+```bash
+# Check gRPC health
+grpcurl -plaintext localhost:3550 grpc.health.v1.Health/Check
+
+# List products
+grpcurl -plaintext localhost:3550 hipstershop.ProductCatalogService/ListProducts
+
+# Get specific product
+grpcurl -plaintext -d '{"id":"OLJCESPC7Z"}' localhost:3550 hipstershop.ProductCatalogService/GetProduct
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Products not loading" icon="circle-exclamation">
+    **Symptoms**: Empty product list, errors in logs
+    
+    **Possible Causes**:
+    - products.json file missing
+    - Invalid JSON format
+    - File permissions
+    
+    **Solutions**:
+    ```bash
+    # Check if file exists
+    kubectl exec -it productcatalogservice-pod -- ls -la products.json
+    
+    # View file contents
+    kubectl exec -it productcatalogservice-pod -- cat products.json
+    
+    # Check logs
+    kubectl logs -l app=productcatalogservice
+    
+    # Validate JSON
+    cat products.json | jq .
+    ```
+  </Accordion>
+  
+  <Accordion title="Search not working" icon="circle-exclamation">
+    **Symptoms**: Search returns no results
+    
+    **Possible Causes**:
+    - Case sensitivity issues
+    - Query too specific
+    - Products not loaded
+    
+    **Solutions**:
+    ```bash
+    # Test search directly
+    grpcurl -plaintext -d '{"query":"sun"}' \
+      localhost:3550 hipstershop.ProductCatalogService/SearchProducts
+    
+    # Check product names
+    grpcurl -plaintext localhost:3550 \
+      hipstershop.ProductCatalogService/ListProducts | jq '.products[].name'
+    ```
+  </Accordion>
+  
+  <Accordion title="High latency" icon="circle-exclamation">
+    **Symptoms**: Slow product loading
+    
+    **Possible Causes**:
+    - EXTRA_LATENCY set
+    - Dynamic reload enabled
+    - Resource constraints
+    
+    **Solutions**:
+    ```bash
+    # Check environment variables
+    kubectl exec -it productcatalogservice-pod -- env | grep LATENCY
+    
+    # Disable dynamic reload
+    kubectl exec productcatalogservice-pod -- kill -USR2 1
+    
+    # Check resource usage
+    kubectl top pod -l app=productcatalogservice
+    
+    # Scale up
+    kubectl scale deployment/productcatalogservice --replicas=5
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimization
+
+### Caching Strategy
+
+Products are loaded once at startup and cached in memory:
+
+```go
+// Load products at startup
+products, err := readProductsFile()
+if err != nil {
+    log.Fatal(err)
+}
+
+catalog := &productCatalog{
+    products: products,
+}
+```
+
+### Concurrent Access
+
+Use read-write locks for thread-safe access:
+
+```go
+type productCatalog struct {
+    sync.RWMutex
+    products []*pb.Product
+}
+
+// Multiple readers can access simultaneously
+func (c *productCatalog) ListProducts() []*pb.Product {
+    c.RLock()
+    defer c.RUnlock()
+    return c.products
+}
+```
+
+### Search Optimization
+
+For large catalogs, consider:
+- Indexing by category
+- Full-text search engine (Elasticsearch)
+- Caching search results
+- Pagination
+
+## Security Considerations
+
+### Input Validation
+
+```go
+func (s *server) GetProduct(ctx context.Context, req *pb.GetProductRequest) (*pb.Product, error) {
+    // Validate product ID
+    if req.Id == "" {
+        return nil, status.Error(codes.InvalidArgument, "product ID required")
+    }
+    
+    if len(req.Id) > 100 {
+        return nil, status.Error(codes.InvalidArgument, "product ID too long")
+    }
+    
+    return s.catalog.GetProduct(req.Id)
+}
+```
+
+### File Access
+
+```go
+// Restrict file access to read-only
+file, err := os.OpenFile("products.json", os.O_RDONLY, 0444)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Frontend Service" icon="window-maximize" href="/microservices/frontend">
+    See how frontend displays products
+  </Card>
+  <Card title="Recommendation Service" icon="star" href="/microservices/recommendationservice">
+    Learn about product recommendations
+  </Card>
+  <Card title="Search Flow" icon="magnifying-glass" href="/architecture/user-journeys">
+    See product search sequence diagram
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/proto-definitions">
+    Complete Protocol Buffer definitions
+  </Card>
+</CardGroup>

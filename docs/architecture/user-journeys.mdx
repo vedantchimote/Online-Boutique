@@ -1,0 +1,610 @@
+---
+title: User Journeys
+description: Detailed sequence diagrams for key user flows in Online Boutique
+icon: route
+---
+
+This page provides detailed sequence diagrams for the most important user journeys in Online Boutique. These diagrams show exactly how services interact to fulfill user requests.
+
+## Journey 1: Browse Products
+
+The simplest journey - a user visits the homepage and browses products.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant ProductCatalog
+    participant Currency
+    participant Ad
+    participant Recommendation
+    participant Cart
+    
+    User->>Browser: Visit homepage
+    Browser->>Frontend: GET /
+    
+    Note over Frontend: Generate/retrieve<br/>session ID
+    
+    par Fetch Homepage Data
+        Frontend->>ProductCatalog: ListProducts()
+        Frontend->>Currency: GetSupportedCurrencies()
+        Frontend->>Ad: GetAds(["home", "garden"])
+        Frontend->>Cart: GetCart(session_id)
+    end
+    
+    ProductCatalog-->>Frontend: List of 10 products
+    Currency-->>Frontend: ["USD", "EUR", "GBP", ...]
+    Ad-->>Frontend: 2 contextual ads
+    Cart-->>Frontend: Empty cart (new session)
+    
+    Frontend->>Recommendation: ListRecommendations(session_id, [])
+    Recommendation-->>Frontend: [] (no cart items)
+    
+    Note over Frontend: Render HTML with:<br/>- Products<br/>- Currency selector<br/>- Ads<br/>- Empty cart
+    
+    Frontend-->>Browser: HTML Response
+    Browser-->>User: Display homepage
+```
+
+**Key Points**:
+- Session ID generated on first visit
+- Multiple services called in parallel for performance
+- Empty cart for new users
+- No recommendations without cart items
+
+## Journey 2: Search for Products
+
+User searches for specific products.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant ProductCatalog
+    participant Currency
+    
+    User->>Browser: Enter "sunglasses" in search
+    Browser->>Frontend: GET /search?q=sunglasses
+    
+    Frontend->>ProductCatalog: SearchProducts("sunglasses")
+    
+    Note over ProductCatalog: Load products.json<br/>Filter by keyword<br/>Match in name/description
+    
+    ProductCatalog-->>Frontend: Matching products [<br/>  {id: "OLJCESPC7Z", name: "Sunglasses", ...}<br/>]
+    
+    Frontend->>Currency: Convert(prices, user_currency)
+    Currency-->>Frontend: Converted prices
+    
+    Note over Frontend: Render search results<br/>with converted prices
+    
+    Frontend-->>Browser: HTML Response
+    Browser-->>User: Display search results
+```
+
+**Search Behavior**:
+- Case-insensitive matching
+- Searches in product name and description
+- Returns all matching products
+- Prices converted to user's selected currency
+
+## Journey 3: View Product Details
+
+User clicks on a product to see details.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant ProductCatalog
+    participant Currency
+    participant Recommendation
+    participant Ad
+    
+    User->>Browser: Click product
+    Browser->>Frontend: GET /product/OLJCESPC7Z
+    
+    Frontend->>ProductCatalog: GetProduct("OLJCESPC7Z")
+    ProductCatalog-->>Frontend: Product details
+    
+    Frontend->>Currency: Convert(product.price, user_currency)
+    Currency-->>Frontend: Converted price
+    
+    Frontend->>Recommendation: ListRecommendations(session_id, ["OLJCESPC7Z"])
+    
+    Note over Recommendation: Get product categories<br/>Find similar products
+    
+    Recommendation->>ProductCatalog: GetProduct(recommended_ids)
+    ProductCatalog-->>Recommendation: Product details
+    Recommendation-->>Frontend: [similar_product_ids]
+    
+    Frontend->>Ad: GetAds(product.categories)
+    Ad-->>Frontend: Relevant ads
+    
+    Note over Frontend: Render product page with:<br/>- Product details<br/>- Converted price<br/>- Recommendations<br/>- Ads
+    
+    Frontend-->>Browser: HTML Response
+    Browser-->>User: Display product page
+```
+
+**Features**:
+- Full product information displayed
+- Price in user's currency
+- Recommendations based on product category
+- Contextual ads based on product category
+
+## Journey 4: Add Item to Cart
+
+User adds a product to their shopping cart.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant ProductCatalog
+    participant Cart
+    participant Redis
+    
+    User->>Browser: Click "Add to Cart"
+    Browser->>Frontend: POST /cart<br/>{product_id: "OLJCESPC7Z", quantity: 1}
+    
+    Frontend->>ProductCatalog: GetProduct("OLJCESPC7Z")
+    ProductCatalog-->>Frontend: Product details
+    
+    Note over Frontend: Validate product exists<br/>Validate quantity > 0
+    
+    Frontend->>Cart: AddItem(session_id, "OLJCESPC7Z", 1)
+    
+    Cart->>Redis: GET cart:session_id
+    Redis-->>Cart: Current cart data
+    
+    Note over Cart: Deserialize cart<br/>Add/update item<br/>Serialize cart
+    
+    Cart->>Redis: SET cart:session_id<br/>EXPIRE 86400
+    Redis-->>Cart: OK
+    
+    Cart-->>Frontend: Success
+    
+    Frontend->>Cart: GetCart(session_id)
+    Cart->>Redis: GET cart:session_id
+    Redis-->>Cart: Updated cart
+    Cart-->>Frontend: Cart with items
+    
+    Note over Frontend: Calculate cart total<br/>Render cart preview
+    
+    Frontend-->>Browser: Redirect to /cart
+    Browser-->>User: Display cart page
+```
+
+**Cart Operations**:
+- Validates product exists before adding
+- Updates quantity if product already in cart
+- Stores cart in Redis with 24-hour TTL
+- Redirects to cart page after adding
+
+## Journey 5: View Cart
+
+User views their shopping cart.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant Cart
+    participant ProductCatalog
+    participant Currency
+    participant Shipping
+    participant Redis
+    
+    User->>Browser: Click cart icon
+    Browser->>Frontend: GET /cart
+    
+    Frontend->>Cart: GetCart(session_id)
+    Cart->>Redis: GET cart:session_id
+    Redis-->>Cart: Cart data
+    Cart-->>Frontend: Cart items
+    
+    loop For each cart item
+        Frontend->>ProductCatalog: GetProduct(product_id)
+        ProductCatalog-->>Frontend: Product details
+    end
+    
+    Frontend->>Currency: Convert(item_prices, user_currency)
+    Currency-->>Frontend: Converted prices
+    
+    Note over Frontend: Calculate subtotal
+    
+    Frontend->>Shipping: GetQuote(default_address, cart_items)
+    Shipping-->>Frontend: Estimated shipping cost
+    
+    Note over Frontend: Calculate total:<br/>subtotal + shipping
+    
+    Frontend-->>Browser: HTML Response
+    Browser-->>User: Display cart with:<br/>- Items<br/>- Prices<br/>- Shipping estimate<br/>- Total
+```
+
+**Cart Display**:
+- Shows all items with current prices
+- Displays quantity for each item
+- Shows estimated shipping cost
+- Calculates total in user's currency
+
+## Journey 6: Update Cart Quantity
+
+User changes the quantity of an item in the cart.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant Cart
+    participant Redis
+    
+    User->>Browser: Change quantity to 3
+    Browser->>Frontend: POST /cart/update<br/>{product_id: "OLJCESPC7Z", quantity: 3}
+    
+    Frontend->>Cart: AddItem(session_id, "OLJCESPC7Z", 3)
+    
+    Note over Cart: This replaces the<br/>existing quantity
+    
+    Cart->>Redis: GET cart:session_id
+    Redis-->>Cart: Current cart
+    
+    Note over Cart: Update item quantity<br/>Serialize cart
+    
+    Cart->>Redis: SET cart:session_id
+    Redis-->>Cart: OK
+    
+    Cart-->>Frontend: Success
+    Frontend-->>Browser: Redirect to /cart
+    Browser-->>User: Display updated cart
+```
+
+## Journey 7: Remove Item from Cart
+
+User removes an item from the cart.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant Cart
+    participant Redis
+    
+    User->>Browser: Click "Remove"
+    Browser->>Frontend: POST /cart/remove<br/>{product_id: "OLJCESPC7Z"}
+    
+    Frontend->>Cart: AddItem(session_id, "OLJCESPC7Z", 0)
+    
+    Note over Cart: Quantity 0 = remove item
+    
+    Cart->>Redis: GET cart:session_id
+    Redis-->>Cart: Current cart
+    
+    Note over Cart: Remove item from cart<br/>Serialize cart
+    
+    Cart->>Redis: SET cart:session_id
+    Redis-->>Cart: OK
+    
+    Cart-->>Frontend: Success
+    Frontend-->>Browser: Redirect to /cart
+    Browser-->>User: Display updated cart
+```
+
+**Note**: Setting quantity to 0 removes the item from the cart.
+
+## Journey 8: Change Currency
+
+User selects a different currency.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant Currency
+    participant ECB
+    
+    User->>Browser: Select "EUR" from dropdown
+    Browser->>Frontend: POST /setCurrency<br/>{currency_code: "EUR"}
+    
+    Note over Frontend: Store currency in<br/>session cookie
+    
+    Frontend->>Currency: GetSupportedCurrencies()
+    Currency-->>Frontend: List of currencies
+    
+    Note over Frontend: Validate EUR is supported
+    
+    Frontend->>Currency: Convert(all_prices, "EUR")
+    
+    Currency->>ECB: GET exchange rates
+    ECB-->>Currency: XML with rates
+    
+    Note over Currency: Parse rates<br/>Calculate conversions<br/>USD -> EUR
+    
+    Currency-->>Frontend: Converted prices
+    
+    Frontend-->>Browser: Redirect to current page
+    Browser-->>User: Display page with EUR prices
+```
+
+**Currency Conversion**:
+- Supported currencies fetched from ECB
+- Exchange rates cached for 1 hour
+- All prices converted in real-time
+- Currency preference stored in session
+
+## Journey 9: Complete Checkout (Success Path)
+
+The most complex journey - user completes a purchase.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant Checkout
+    participant Cart
+    participant ProductCatalog
+    participant Currency
+    participant Payment
+    participant Shipping
+    participant Email
+    participant Redis
+    
+    User->>Browser: Click "Place Order"
+    Browser->>Frontend: POST /checkout<br/>{address, email, card_info}
+    
+    Note over Frontend: Validate form data
+    
+    Frontend->>Checkout: PlaceOrder(session_id, address, email, card_info, currency)
+    
+    Note over Checkout: START TRANSACTION
+    
+    Checkout->>Cart: GetCart(session_id)
+    Cart->>Redis: GET cart:session_id
+    Redis-->>Cart: Cart data
+    Cart-->>Checkout: Cart items
+    
+    alt Cart is empty
+        Checkout-->>Frontend: Error: Cart is empty
+        Frontend-->>Browser: Error page
+        Browser-->>User: "Your cart is empty"
+    end
+    
+    Note over Checkout: Validate cart not empty
+    
+    loop For each cart item
+        Checkout->>ProductCatalog: GetProduct(product_id)
+        ProductCatalog-->>Checkout: Product details & price
+    end
+    
+    Note over Checkout: Calculate items total
+    
+    Checkout->>Currency: Convert(items_total, user_currency)
+    Currency-->>Checkout: Converted total
+    
+    Checkout->>Shipping: GetQuote(address, cart_items)
+    
+    Note over Shipping: Calculate shipping:<br/>$0.50 per item
+    
+    Shipping-->>Checkout: Shipping cost
+    
+    Note over Checkout: Calculate grand total:<br/>items + shipping
+    
+    Checkout->>Payment: Charge(grand_total, card_info)
+    
+    Note over Payment: Validate card format<br/>Generate transaction ID<br/>(Mock - no real charge)
+    
+    Payment-->>Checkout: transaction_id: "TXN-12345"
+    
+    Checkout->>Shipping: ShipOrder(address, cart_items)
+    
+    Note over Shipping: Generate tracking ID<br/>(Mock - no real shipment)
+    
+    Shipping-->>Checkout: tracking_id: "SHIP-67890"
+    
+    Note over Checkout: Prepare order result
+    
+    Checkout->>Email: SendOrderConfirmation(email, order_details)
+    
+    Note over Email: Format email<br/>Log confirmation<br/>(Mock - no real email)
+    
+    Email-->>Checkout: Success
+    
+    Checkout->>Cart: EmptyCart(session_id)
+    Cart->>Redis: DEL cart:session_id
+    Redis-->>Cart: OK
+    Cart-->>Checkout: Success
+    
+    Note over Checkout: COMMIT TRANSACTION
+    
+    Checkout-->>Frontend: OrderResult{<br/>  order_id,<br/>  transaction_id,<br/>  tracking_id,<br/>  items,<br/>  total<br/>}
+    
+    Frontend-->>Browser: Redirect to /confirmation
+    Browser-->>User: Display order confirmation:<br/>- Order ID<br/>- Tracking number<br/>- Email sent
+```
+
+**Checkout Steps**:
+1. Validate cart is not empty
+2. Get current product prices
+3. Calculate items total
+4. Get shipping quote
+5. Calculate grand total
+6. Process payment (mock)
+7. Create shipment (mock)
+8. Send confirmation email (mock)
+9. Empty cart
+10. Return order confirmation
+
+**Error Handling**: If any step fails, the transaction is rolled back and an error is returned to the user.
+
+## Journey 10: Checkout with Errors
+
+What happens when checkout fails.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Frontend
+    participant Checkout
+    participant Cart
+    participant Payment
+    
+    User->>Browser: Click "Place Order"
+    Browser->>Frontend: POST /checkout
+    Frontend->>Checkout: PlaceOrder(...)
+    
+    Checkout->>Cart: GetCart(session_id)
+    Cart-->>Checkout: Cart items
+    
+    Note over Checkout: Process order...
+    
+    Checkout->>Payment: Charge(amount, card_info)
+    
+    alt Invalid Card
+        Payment-->>Checkout: Error: INVALID_ARGUMENT<br/>"Invalid card number"
+        Checkout-->>Frontend: Error: Payment failed
+        Frontend-->>Browser: Error page
+        Browser-->>User: "Payment failed: Invalid card"
+    else Payment Service Down
+        Payment--xCheckout: Error: UNAVAILABLE
+        Checkout-->>Frontend: Error: Service unavailable
+        Frontend-->>Browser: Error page
+        Browser-->>User: "Service temporarily unavailable"
+    else Timeout
+        Payment--xCheckout: Error: DEADLINE_EXCEEDED
+        Checkout-->>Frontend: Error: Request timeout
+        Frontend-->>Browser: Error page
+        Browser-->>User: "Request timed out, please try again"
+    end
+    
+    Note over Checkout: Cart NOT emptied<br/>User can retry
+```
+
+**Error Scenarios**:
+- **Invalid card**: User sees error, can correct and retry
+- **Service unavailable**: Temporary error, user can retry
+- **Timeout**: Request took too long, user can retry
+- **Cart preserved**: Cart is not emptied on error
+
+## Journey 11: Load Generator Simulation
+
+The load generator simulates realistic user behavior.
+
+```mermaid
+sequenceDiagram
+    participant LoadGen
+    participant Frontend
+    
+    Note over LoadGen: Start user session
+    
+    LoadGen->>Frontend: GET / (Browse homepage)
+    Frontend-->>LoadGen: Homepage
+    
+    Note over LoadGen: Wait 2-5 seconds
+    
+    LoadGen->>Frontend: GET /product/{random_id}
+    Frontend-->>LoadGen: Product page
+    
+    Note over LoadGen: Wait 2-5 seconds
+    
+    LoadGen->>Frontend: POST /cart (Add to cart)
+    Frontend-->>LoadGen: Cart updated
+    
+    Note over LoadGen: Wait 2-5 seconds
+    
+    LoadGen->>Frontend: GET /cart
+    Frontend-->>LoadGen: Cart page
+    
+    Note over LoadGen: 30% chance to checkout
+    
+    alt Proceed to checkout (30%)
+        LoadGen->>Frontend: POST /checkout
+        Frontend-->>LoadGen: Order confirmation
+        Note over LoadGen: Session complete
+    else Abandon cart (70%)
+        Note over LoadGen: Session complete<br/>(cart abandoned)
+    end
+    
+    Note over LoadGen: Wait 10 seconds<br/>Start new session
+```
+
+**Load Generator Behavior**:
+- Simulates realistic user patterns
+- Random delays between actions (2-5 seconds)
+- 30% checkout rate, 70% abandonment
+- Continuous traffic generation
+- Configurable request rate
+
+## Performance Characteristics
+
+### Latency Targets
+
+| Journey | Target (p95) | Typical |
+|---------|--------------|---------|
+| Browse Products | < 200ms | 100ms |
+| Search Products | < 150ms | 80ms |
+| View Product | < 150ms | 75ms |
+| Add to Cart | < 100ms | 50ms |
+| View Cart | < 200ms | 120ms |
+| Change Currency | < 100ms | 60ms |
+| Complete Checkout | < 1000ms | 600ms |
+
+### Service Call Counts
+
+| Journey | Service Calls | Parallel | Sequential |
+|---------|---------------|----------|------------|
+| Browse Products | 6 | 5 | 1 |
+| View Product | 4 | 2 | 2 |
+| Add to Cart | 3 | 0 | 3 |
+| Complete Checkout | 12 | 0 | 12 |
+
+## User Experience Optimizations
+
+### Parallel Requests
+
+Homepage loads faster by calling services in parallel:
+- Product Catalog
+- Currency Service
+- Ad Service
+- Cart Service
+- Recommendation Service
+
+### Caching
+
+Reduces latency for repeated requests:
+- Exchange rates (1 hour)
+- Product catalog (in-memory)
+- Cart data (Redis)
+
+### Graceful Degradation
+
+Non-critical services can fail without breaking the page:
+- No recommendations → Hide section
+- No ads → Hide ad section
+- Currency service down → Show USD prices
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="sitemap" href="/architecture/overview">
+    See the complete system architecture
+  </Card>
+  <Card title="Data Flow" icon="diagram-project" href="/architecture/data-flow">
+    Understand how data moves through the system
+  </Card>
+  <Card title="Microservices" icon="cubes" href="/microservices/overview">
+    Learn about each service in detail
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/overview">
+    Explore the gRPC APIs
+  </Card>
+</CardGroup>

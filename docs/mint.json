@@ -1,0 +1,119 @@
+{
+  "name": "Online Boutique",
+  "colors": {
+    "primary": "#4285F4",
+    "light": "#8AB4F8",
+    "dark": "#1967D2",
+    "background": {
+      "light": "#FFFFFF",
+      "dark": "#0F172A"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started",
+    "url": "/getting-started/quickstart"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "getting-started/quickstart",
+        "getting-started/prerequisites",
+        "getting-started/local-setup"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "architecture/overview",
+        "architecture/communication",
+        "architecture/data-flow",
+        "architecture/user-journeys"
+      ]
+    },
+    {
+      "group": "Microservices",
+      "pages": [
+        "microservices/overview",
+        "microservices/frontend",
+        "microservices/cartservice",
+        "microservices/productcatalogservice",
+        "microservices/currencyservice",
+        "microservices/paymentservice",
+        "microservices/shippingservice",
+        "microservices/emailservice",
+        "microservices/checkoutservice",
+        "microservices/recommendationservice",
+        "microservices/adservice",
+        "microservices/loadgenerator",
+        "microservices/shoppingassistantservice"
+      ]
+    },
+    {
+      "group": "Deployment",
+      "pages": [
+        "deployment/overview",
+        "deployment/kubernetes",
+        "deployment/helm",
+        "deployment/terraform",
+        "deployment/kustomize",
+        "deployment/optional-components"
+      ]
+    },
+    {
+      "group": "Development",
+      "pages": [
+        "development/setup",
+        "development/building",
+        "development/testing",
+        "development/adding-service",
+        "development/contributing"
+      ]
+    },
+    {
+      "group": "Operations",
+      "pages": [
+        "operations/overview",
+        "operations/monitoring",
+        "operations/observability",
+        "operations/production",
+        "operations/incident-response"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/overview",
+        "api-reference/proto-definitions",
+        "api-reference/grpc-services"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/GoogleCloudPlatform/microservices-demo",
+    "twitter": "https://twitter.com/googlecloud"
+  },
+  "analytics": {
+    "ga4": {
+      "measurementId": "G-XXXXXXXXXX"
+    }
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true,
+    "raiseIssue": true
+  }
+}

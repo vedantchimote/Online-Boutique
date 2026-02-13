@@ -1,0 +1,568 @@
+---
+title: Local Setup
+description: Run Online Boutique on your local machine using Minikube, Kind, or Docker Desktop
+icon: laptop-code
+---
+
+This guide shows you how to run Online Boutique on a local Kubernetes cluster. This is perfect for development, testing, and learning without incurring cloud costs.
+
+<Note>
+  Running locally is completely free and doesn't require a Google Cloud account!
+</Note>
+
+## Choose Your Local Cluster
+
+Select the option that best fits your needs:
+
+<CardGroup cols={3}>
+  <Card title="Minikube" icon="cube">
+    **Best for**: Linux users, learning Kubernetes
+    
+    ✅ Full Kubernetes features  
+    ✅ Easy to use  
+    ✅ Good documentation
+  </Card>
+  <Card title="Kind" icon="layer-group">
+    **Best for**: CI/CD, lightweight testing
+    
+    ✅ Fast startup  
+    ✅ Multiple clusters  
+    ✅ Minimal resources
+  </Card>
+  <Card title="Docker Desktop" icon="docker">
+    **Best for**: macOS and Windows users
+    
+    ✅ GUI interface  
+    ✅ Integrated with Docker  
+    ✅ Easy setup
+  </Card>
+</CardGroup>
+
+## Prerequisites
+
+Before starting, ensure you have:
+
+- [Docker](https://www.docker.com/products/docker-desktop) installed and running
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) installed
+- [Skaffold 2.0.2+](https://skaffold.dev/docs/install/) installed
+- [Git](https://git-scm.com/) installed
+- At least 8 GB RAM and 40 GB free disk space
+
+<Tip>
+  Need help installing these tools? Check our [Prerequisites Guide](/getting-started/prerequisites).
+</Tip>
+
+## Option 1: Minikube
+
+### Step 1: Install Minikube
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    brew install minikube
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+    sudo install minikube-linux-amd64 /usr/local/bin/minikube
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    choco install minikube
+    ```
+  </Tab>
+</Tabs>
+
+### Step 2: Start Minikube
+
+Start Minikube with sufficient resources:
+
+```bash
+minikube start --cpus=4 --memory=4096 --disk-size=32g
+```
+
+<Info>
+  **Minimum requirements**: 4 CPUs, 4 GB RAM, 32 GB disk. First startup will take several minutes as it downloads the Kubernetes image.
+</Info>
+
+### Step 3: Verify Cluster
+
+```bash
+kubectl get nodes
+```
+
+You should see:
+```
+NAME       STATUS   ROLES           AGE   VERSION
+minikube   Ready    control-plane   1m    v1.28.0
+```
+
+### Step 4: Clone Repository
+
+```bash
+git clone https://github.com/GoogleCloudPlatform/microservices-demo
+cd microservices-demo/
+```
+
+### Step 5: Deploy with Skaffold
+
+```bash
+skaffold run
+```
+
+<Warning>
+  First run will be slow (15-20 minutes) as it builds all container images. Subsequent runs are much faster.
+</Warning>
+
+### Step 6: Access the Application
+
+```bash
+kubectl port-forward deployment/frontend 8080:8080
+```
+
+Open your browser to: **http://localhost:8080**
+
+<img src="/images/online-boutique-frontend-1.png" alt="Online Boutique on localhost" />
+
+## Option 2: Kind
+
+### Step 1: Install Kind
+
+<Tabs>
+  <Tab title="macOS">
+    ```bash
+    brew install kind
+    ```
+  </Tab>
+  <Tab title="Linux">
+    ```bash
+    curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+    chmod +x ./kind
+    sudo mv ./kind /usr/local/bin/kind
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    choco install kind
+    ```
+  </Tab>
+</Tabs>
+
+### Step 2: Create Cluster
+
+```bash
+kind create cluster --name online-boutique
+```
+
+### Step 3: Verify Cluster
+
+```bash
+kubectl cluster-info --context kind-online-boutique
+kubectl get nodes
+```
+
+### Step 4: Clone and Deploy
+
+```bash
+git clone https://github.com/GoogleCloudPlatform/microservices-demo
+cd microservices-demo/
+skaffold run
+```
+
+### Step 5: Access the Application
+
+```bash
+kubectl port-forward deployment/frontend 8080:8080
+```
+
+Visit: **http://localhost:8080**
+
+## Option 3: Docker Desktop
+
+### Step 1: Enable Kubernetes
+
+1. Open Docker Desktop
+2. Go to **Settings** (⚙️ icon)
+3. Select **Kubernetes** tab
+4. Check **Enable Kubernetes**
+5. Configure resources:
+   - **CPUs**: At least 3
+   - **Memory**: At least 6 GB
+   - **Disk**: At least 32 GB
+6. Click **Apply & Restart**
+
+<Info>
+  Kubernetes will take a few minutes to start. Watch for the green indicator in Docker Desktop.
+</Info>
+
+### Step 2: Verify Cluster
+
+```bash
+kubectl config use-context docker-desktop
+kubectl get nodes
+```
+
+### Step 3: Clone and Deploy
+
+```bash
+git clone https://github.com/GoogleCloudPlatform/microservices-demo
+cd microservices-demo/
+skaffold run
+```
+
+### Step 4: Access the Application
+
+```bash
+kubectl port-forward deployment/frontend 8080:8080
+```
+
+Visit: **http://localhost:8080**
+
+## Verify Deployment
+
+Check that all services are running:
+
+```bash
+# View all pods
+kubectl get pods
+
+# Check services
+kubectl get services
+
+# View logs (example: frontend)
+kubectl logs -l app=frontend --tail=50
+
+# Check resource usage
+kubectl top pods
+```
+
+Expected output for `kubectl get pods`:
+
+```
+NAME                                     READY   STATUS    RESTARTS   AGE
+adservice-76bdd69666-ckc5j               1/1     Running   0          5m
+cartservice-66d497c6b7-dp5jr             1/1     Running   0          5m
+checkoutservice-666c784bd6-4jd22         1/1     Running   0          5m
+currencyservice-5d5d496984-4jmd7         1/1     Running   0          5m
+emailservice-667457d9d6-75jcq            1/1     Running   0          5m
+frontend-6b8d69b9fb-wjqdg                1/1     Running   0          5m
+loadgenerator-665b5cd444-gwqdq           1/1     Running   0          5m
+paymentservice-68596d6dd6-bf6bv          1/1     Running   0          5m
+productcatalogservice-557d474574-888kr   1/1     Running   0          5m
+recommendationservice-69c56b74d4-7z8r5   1/1     Running   0          5m
+redis-cart-5f59546cdd-5jnqf              1/1     Running   0          5m
+shippingservice-6ccc89f8fd-v686r         1/1     Running   0          5m
+```
+
+## Development Workflow
+
+### Live Development with Skaffold
+
+For active development with automatic rebuilds:
+
+```bash
+skaffold dev
+```
+
+This will:
+- Watch for code changes
+- Automatically rebuild changed services
+- Redeploy to your cluster
+- Stream logs to your terminal
+
+<Tip>
+  Press `Ctrl+C` to stop Skaffold dev mode and clean up resources.
+</Tip>
+
+### Working on a Single Service
+
+To develop a specific service:
+
+```bash
+# Example: Working on the frontend
+cd src/frontend
+
+# Build the service
+docker build -t frontend:dev .
+
+# Run locally (outside Kubernetes)
+docker run -p 8080:8080 frontend:dev
+```
+
+### Debugging
+
+Enable debug mode for detailed logging:
+
+```bash
+skaffold debug
+```
+
+This enables:
+- Debug ports for supported languages
+- Verbose logging
+- Source maps for debugging
+
+## Common Tasks
+
+### Rebuild All Images
+
+```bash
+skaffold build
+```
+
+### Delete and Redeploy
+
+```bash
+skaffold delete
+skaffold run
+```
+
+### View Logs
+
+```bash
+# All services
+kubectl logs -l app --all-containers=true
+
+# Specific service
+kubectl logs -l app=frontend -f
+
+# Previous instance (if crashed)
+kubectl logs -l app=frontend --previous
+```
+
+### Restart a Service
+
+```bash
+kubectl rollout restart deployment/frontend
+```
+
+### Scale a Service
+
+```bash
+kubectl scale deployment/frontend --replicas=3
+```
+
+## Performance Optimization
+
+### Speed Up Builds
+
+1. **Use BuildKit** (already enabled in Skaffold config):
+   ```yaml
+   # In skaffold.yaml
+   build:
+     local:
+       useBuildkit: true
+   ```
+
+2. **Cache Docker layers**:
+   ```bash
+   # Ensure Docker has enough disk space
+   docker system df
+   docker system prune  # If needed
+   ```
+
+3. **Increase Docker resources**:
+   - Go to Docker Desktop Settings
+   - Increase CPU and Memory allocation
+
+### Reduce Resource Usage
+
+If your machine is struggling:
+
+1. **Disable load generator**:
+   ```bash
+   kubectl scale deployment/loadgenerator --replicas=0
+   ```
+
+2. **Run fewer services**:
+   Edit `kubernetes-manifests/` to comment out services you don't need
+
+3. **Use smaller resource limits**:
+   Reduce CPU/memory requests in deployment manifests
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Pods stuck in ImagePullBackOff" icon="circle-exclamation">
+    **Cause**: Docker can't pull or find the image.
+    
+    **Solution**:
+    ```bash
+    # Check if images were built
+    docker images | grep -E "frontend|cartservice"
+    
+    # Rebuild images
+    skaffold build
+    
+    # For Minikube, use Minikube's Docker daemon
+    eval $(minikube docker-env)
+    skaffold build
+    ```
+  </Accordion>
+  
+  <Accordion title="Out of memory errors" icon="circle-exclamation">
+    **Cause**: Insufficient resources allocated to Docker/Kubernetes.
+    
+    **Solution**:
+    - Increase Docker Desktop memory to 8 GB+
+    - Close other applications
+    - Disable load generator: `kubectl scale deployment/loadgenerator --replicas=0`
+  </Accordion>
+  
+  <Accordion title="Port 8080 already in use" icon="circle-exclamation">
+    **Cause**: Another application is using port 8080.
+    
+    **Solution**:
+    ```bash
+    # Use a different port
+    kubectl port-forward deployment/frontend 8081:8080
+    
+    # Or find and kill the process using 8080
+    lsof -ti:8080 | xargs kill -9  # macOS/Linux
+    ```
+  </Accordion>
+  
+  <Accordion title="Skaffold build fails" icon="circle-exclamation">
+    **Cause**: Build errors or insufficient disk space.
+    
+    **Solution**:
+    ```bash
+    # Check disk space
+    df -h
+    
+    # Clean up Docker
+    docker system prune -a
+    
+    # Check build logs
+    skaffold build -v debug
+    ```
+  </Accordion>
+  
+  <Accordion title="Services can't communicate" icon="circle-exclamation">
+    **Cause**: Network policies or DNS issues.
+    
+    **Solution**:
+    ```bash
+    # Check service endpoints
+    kubectl get endpoints
+    
+    # Test DNS resolution
+    kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup frontend
+    
+    # Check network policies
+    kubectl get networkpolicies
+    ```
+  </Accordion>
+  
+  <Accordion title="Minikube won't start" icon="circle-exclamation">
+    **Cause**: Previous cluster state or driver issues.
+    
+    **Solution**:
+    ```bash
+    # Delete and recreate
+    minikube delete
+    minikube start --cpus=4 --memory=4096 --disk-size=32g
+    
+    # Try different driver
+    minikube start --driver=docker  # or virtualbox, hyperkit
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Cleanup
+
+### Stop Services
+
+```bash
+# With Skaffold
+skaffold delete
+
+# Or manually
+kubectl delete -f ./kubernetes-manifests/
+```
+
+### Stop Cluster
+
+<Tabs>
+  <Tab title="Minikube">
+    ```bash
+    # Stop (preserves state)
+    minikube stop
+    
+    # Delete (removes everything)
+    minikube delete
+    ```
+  </Tab>
+  <Tab title="Kind">
+    ```bash
+    kind delete cluster --name online-boutique
+    ```
+  </Tab>
+  <Tab title="Docker Desktop">
+    Go to Docker Desktop Settings → Kubernetes → Uncheck "Enable Kubernetes"
+  </Tab>
+</Tabs>
+
+### Clean Up Docker
+
+```bash
+# Remove unused images
+docker image prune -a
+
+# Remove all stopped containers
+docker container prune
+
+# Full cleanup (careful!)
+docker system prune -a --volumes
+```
+
+## Next Steps
+
+Now that you have Online Boutique running locally:
+
+<CardGroup cols={2}>
+  <Card title="Explore Architecture" icon="sitemap" href="/architecture/overview">
+    Learn how the services work together
+  </Card>
+  <Card title="Development Guide" icon="code" href="/development/setup">
+    Start developing and contributing
+  </Card>
+  <Card title="Microservices Deep Dive" icon="cubes" href="/microservices/overview">
+    Understand each service in detail
+  </Card>
+  <Card title="Deploy to GKE" icon="cloud" href="/getting-started/quickstart">
+    Take it to production on Google Cloud
+  </Card>
+</CardGroup>
+
+## Tips for Local Development
+
+<Tip>
+  **Save time**: Keep your cluster running between sessions. Just stop Skaffold, not the cluster.
+</Tip>
+
+<Tip>
+  **Monitor resources**: Use `kubectl top nodes` and `kubectl top pods` to watch resource usage.
+</Tip>
+
+<Tip>
+  **Use aliases**: Create shell aliases for common commands:
+  ```bash
+  alias k=kubectl
+  alias kgp="kubectl get pods"
+  alias kgs="kubectl get services"
+  ```
+</Tip>
+
+<Tip>
+  **Enable autocomplete**: 
+  ```bash
+  # Bash
+  source <(kubectl completion bash)
+  
+  # Zsh
+  source <(kubectl completion zsh)
+  ```
+</Tip>

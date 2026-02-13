@@ -1,0 +1,620 @@
+---
+title: Currency Service
+description: Multi-currency support with real-time exchange rates
+icon: dollar-sign
+---
+
+The Currency Service provides multi-currency support for Online Boutique. It fetches real exchange rates from the European Central Bank and converts prices between currencies.
+
+## Overview
+
+The Currency Service:
+- Fetches real exchange rates from ECB
+- Supports 150+ currencies
+- Converts prices between currencies
+- Caches exchange rates
+- Handles the highest QPS in the system
+
+## Technology Stack
+
+- **Language**: Node.js 18+
+- **Framework**: Express.js
+- **External API**: European Central Bank
+- **gRPC**: @grpc/grpc-js
+- **Port**: 7000 (gRPC)
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Real Exchange Rates" icon="chart-line">
+    Live rates from European Central Bank
+  </Card>
+  <Card title="150+ Currencies" icon="globe">
+    Support for all major world currencies
+  </Card>
+  <Card title="Rate Caching" icon="clock">
+    1-hour cache for performance
+  </Card>
+  <Card title="High Performance" icon="bolt">
+    Highest QPS service in the system
+  </Card>
+</CardGroup>
+
+## Service Dependencies
+
+### Depends On
+
+| Service | Purpose | Required |
+|---------|---------|----------|
+| **European Central Bank API** | Exchange rate data | Yes |
+
+### Used By
+
+| Service | Purpose |
+|---------|---------|
+| **Frontend** | Display prices in user's currency |
+| **Checkout Service** | Convert order totals |
+
+## gRPC API
+
+### Service Definition
+
+```protobuf
+service CurrencyService {
+    rpc GetSupportedCurrencies(Empty) returns (GetSupportedCurrenciesResponse) {}
+    rpc Convert(CurrencyConversionRequest) returns (Money) {}
+}
+
+message Money {
+    string currency_code = 1;
+    int64 units = 2;
+    int32 nanos = 3;
+}
+
+message GetSupportedCurrenciesResponse {
+    repeated string currency_codes = 1;
+}
+
+message CurrencyConversionRequest {
+    Money from = 1;
+    string to_code = 2;
+}
+```
+
+### Methods
+
+#### GetSupportedCurrencies
+
+Returns list of supported currency codes.
+
+**Request**: `Empty`
+
+**Response**: `GetSupportedCurrenciesResponse`
+```json
+{
+  "currency_codes": [
+    "USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", ...
+  ]
+}
+```
+
+#### Convert
+
+Converts an amount from one currency to another.
+
+**Request**: `CurrencyConversionRequest`
+```json
+{
+  "from": {
+    "currency_code": "USD",
+    "units": 100,
+    "nanos": 0
+  },
+  "to_code": "EUR"
+}
+```
+
+**Response**: `Money`
+```json
+{
+  "currency_code": "EUR",
+  "units": 85,
+  "nanos": 0
+}
+```
+
+**Conversion Formula**:
+```
+converted_amount = original_amount * (target_rate / source_rate)
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `PORT` | gRPC server port | `7000` | No |
+| `DISABLE_PROFILER` | Disable Cloud Profiler | `false` | No |
+| `DISABLE_TRACING` | Disable tracing | `false` | No |
+
+### Example Configuration
+
+```yaml
+env:
+- name: PORT
+  value: "7000"
+```
+
+## Exchange Rate Integration
+
+### European Central Bank API
+
+**Endpoint**: `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`
+
+**Response Format**:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<gesmes:Envelope xmlns:gesmes="..." xmlns="...">
+  <Cube>
+    <Cube time="2024-02-13">
+      <Cube currency="USD" rate="1.0856"/>
+      <Cube currency="JPY" rate="163.26"/>
+      <Cube currency="GBP" rate="0.85668"/>
+      <Cube currency="CHF" rate="0.9532"/>
+      <Cube currency="CAD" rate="1.4678"/>
+      <!-- ... more currencies -->
+    </Cube>
+  </Cube>
+</gesmes:Envelope>
+```
+
+### Rate Caching
+
+```javascript
+class CurrencyService {
+  constructor() {
+    this.rates = {};
+    this.lastUpdate = null;
+    this.CACHE_TTL = 3600000; // 1 hour in milliseconds
+  }
+  
+  async getRates() {
+    const now = Date.now();
+    
+    // Return cached rates if still valid
+    if (this.lastUpdate && (now - this.lastUpdate) < this.CACHE_TTL) {
+      return this.rates;
+    }
+    
+    // Fetch new rates
+    try {
+      const response = await fetch(ECB_URL);
+      const xml = await response.text();
+      this.rates = this.parseRates(xml);
+      this.lastUpdate = now;
+      return this.rates;
+    } catch (error) {
+      // Return cached rates on error
+      if (Object.keys(this.rates).length > 0) {
+        console.warn('Using cached rates due to fetch error');
+        return this.rates;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+### Rate Parsing
+
+```javascript
+parseRates(xml) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, 'text/xml');
+  const cubes = doc.getElementsByTagName('Cube');
+  
+  const rates = { 'EUR': 1.0 }; // EUR is the base currency
+  
+  for (let cube of cubes) {
+    const currency = cube.getAttribute('currency');
+    const rate = cube.getAttribute('rate');
+    
+    if (currency && rate) {
+      rates[currency] = parseFloat(rate);
+    }
+  }
+  
+  return rates;
+}
+```
+
+## Money Representation
+
+### Protocol Buffer Definition
+
+```protobuf
+message Money {
+    string currency_code = 1;  // ISO 4217 code
+    int64 units = 2;            // Whole units
+    int32 nanos = 3;            // Fractional units (10^-9)
+}
+```
+
+### Examples
+
+```javascript
+// $12.34
+{
+  currency_code: "USD",
+  units: 12,
+  nanos: 340000000
+}
+
+// -$1.75
+{
+  currency_code: "USD",
+  units: -1,
+  nanos: -750000000
+}
+
+// €0.99
+{
+  currency_code: "EUR",
+  units: 0,
+  nanos: 990000000
+}
+
+// ¥1000 (no fractional part)
+{
+  currency_code: "JPY",
+  units: 1000,
+  nanos: 0
+}
+```
+
+### Conversion Implementation
+
+```javascript
+function convertMoney(from, toCode, rates) {
+  // Get exchange rates
+  const fromRate = rates[from.currency_code];
+  const toRate = rates[toCode];
+  
+  if (!fromRate || !toRate) {
+    throw new Error(`Unsupported currency: ${from.currency_code} or ${toCode}`);
+  }
+  
+  // Convert to decimal
+  const fromAmount = from.units + (from.nanos / 1e9);
+  
+  // Convert currency
+  const toAmount = fromAmount * (toRate / fromRate);
+  
+  // Split into units and nanos
+  const units = Math.floor(toAmount);
+  const nanos = Math.round((toAmount - units) * 1e9);
+  
+  return {
+    currency_code: toCode,
+    units: units,
+    nanos: nanos
+  };
+}
+```
+
+## Supported Currencies
+
+### Major Currencies
+
+| Code | Currency | Symbol |
+|------|----------|--------|
+| USD | US Dollar | $ |
+| EUR | Euro | € |
+| GBP | British Pound | £ |
+| JPY | Japanese Yen | ¥ |
+| CHF | Swiss Franc | CHF |
+| CAD | Canadian Dollar | C$ |
+| AUD | Australian Dollar | A$ |
+| CNY | Chinese Yuan | ¥ |
+| INR | Indian Rupee | ₹ |
+| KRW | South Korean Won | ₩ |
+
+### All Supported Currencies
+
+The service supports 150+ currencies including:
+- All major world currencies
+- European currencies
+- Asian currencies
+- African currencies
+- South American currencies
+- Middle Eastern currencies
+
+Full list available via `GetSupportedCurrencies()` API.
+
+## Local Development
+
+### Prerequisites
+
+- Node.js 18 or later
+- npm or yarn
+
+### Running Locally
+
+```bash
+# Navigate to service directory
+cd src/currencyservice
+
+# Install dependencies
+npm install
+
+# Run the service
+npm start
+
+# Service listens on :7000
+```
+
+### Testing
+
+```bash
+# Run unit tests
+npm test
+
+# Run with coverage
+npm run test:coverage
+
+# Test with grpcurl
+grpcurl -plaintext localhost:7000 hipstershop.CurrencyService/GetSupportedCurrencies
+
+# Test conversion
+grpcurl -plaintext -d '{
+  "from": {"currency_code": "USD", "units": 100, "nanos": 0},
+  "to_code": "EUR"
+}' localhost:7000 hipstershop.CurrencyService/Convert
+```
+
+## Deployment
+
+### Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: currencyservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: currencyservice
+  template:
+    metadata:
+      labels:
+        app: currencyservice
+    spec:
+      containers:
+      - name: server
+        image: currencyservice:latest
+        ports:
+        - containerPort: 7000
+        env:
+        - name: PORT
+          value: "7000"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        livenessProbe:
+          grpc:
+            port: 7000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          grpc:
+            port: 7000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+```
+
+## Monitoring
+
+### Key Metrics
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| **Request Rate** | Requests per second | - |
+| **Error Rate** | Percentage of failed requests | > 1% |
+| **Latency (p95)** | 95th percentile response time | > 100ms |
+| **Cache Hit Rate** | Percentage using cached rates | < 90% |
+| **ECB API Latency** | External API response time | > 2000ms |
+| **Rate Freshness** | Time since last rate update | > 2 hours |
+
+### Health Checks
+
+```bash
+# Check gRPC health
+grpcurl -plaintext localhost:7000 grpc.health.v1.Health/Check
+
+# Get supported currencies
+grpcurl -plaintext localhost:7000 hipstershop.CurrencyService/GetSupportedCurrencies
+
+# Test conversion
+grpcurl -plaintext -d '{"from":{"currency_code":"USD","units":100},"to_code":"EUR"}' \
+  localhost:7000 hipstershop.CurrencyService/Convert
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ECB API unavailable" icon="circle-exclamation">
+    **Symptoms**: Conversion errors, stale rates
+    
+    **Possible Causes**:
+    - ECB API down
+    - Network connectivity issues
+    - Firewall blocking
+    
+    **Solutions**:
+    ```bash
+    # Test ECB API connectivity
+    curl https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml
+    
+    # Check service logs
+    kubectl logs -l app=currencyservice
+    
+    # Service uses cached rates as fallback
+    # Check cache age in logs
+    ```
+  </Accordion>
+  
+  <Accordion title="Conversion errors" icon="circle-exclamation">
+    **Symptoms**: Invalid conversion results
+    
+    **Possible Causes**:
+    - Unsupported currency
+    - Invalid money format
+    - Rate parsing error
+    
+    **Solutions**:
+    ```bash
+    # Verify currency is supported
+    grpcurl -plaintext localhost:7000 \
+      hipstershop.CurrencyService/GetSupportedCurrencies
+    
+    # Check money format
+    # units and nanos must have same sign
+    # nanos must be between -999,999,999 and +999,999,999
+    
+    # View service logs
+    kubectl logs -l app=currencyservice --tail=100
+    ```
+  </Accordion>
+  
+  <Accordion title="High latency" icon="circle-exclamation">
+    **Symptoms**: Slow currency conversions
+    
+    **Possible Causes**:
+    - ECB API slow
+    - Cache expired
+    - High request volume
+    
+    **Solutions**:
+    ```bash
+    # Check ECB API latency
+    time curl https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml
+    
+    # Scale up service
+    kubectl scale deployment/currencyservice --replicas=5
+    
+    # Monitor cache hit rate
+    # Should be > 90% for good performance
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimization
+
+### Caching Strategy
+
+```javascript
+// Cache rates for 1 hour
+const CACHE_TTL = 3600000;
+
+// Aggressive caching for high QPS
+async function getRatesWithCache() {
+  if (isCacheValid()) {
+    return cachedRates;
+  }
+  
+  // Fetch in background, return cached rates immediately
+  fetchRatesAsync();
+  return cachedRates;
+}
+```
+
+### Connection Pooling
+
+```javascript
+// Reuse HTTP connections
+const agent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 10
+});
+
+const response = await fetch(ECB_URL, { agent });
+```
+
+### Batch Conversions
+
+```javascript
+// Convert multiple amounts in one call
+function convertBatch(amounts, toCode, rates) {
+  return amounts.map(amount => convert(amount, toCode, rates));
+}
+```
+
+## Security Considerations
+
+### Input Validation
+
+```javascript
+function validateMoney(money) {
+  // Validate currency code
+  if (!money.currency_code || money.currency_code.length !== 3) {
+    throw new Error('Invalid currency code');
+  }
+  
+  // Validate nanos range
+  if (money.nanos < -999999999 || money.nanos > 999999999) {
+    throw new Error('Invalid nanos value');
+  }
+  
+  // Validate sign consistency
+  if ((money.units > 0 && money.nanos < 0) || 
+      (money.units < 0 && money.nanos > 0)) {
+    throw new Error('Inconsistent signs');
+  }
+  
+  return true;
+}
+```
+
+### Rate Validation
+
+```javascript
+function validateRates(rates) {
+  // Ensure rates are positive
+  for (const [currency, rate] of Object.entries(rates)) {
+    if (rate <= 0) {
+      throw new Error(`Invalid rate for ${currency}: ${rate}`);
+    }
+  }
+  
+  // Ensure EUR base rate is 1.0
+  if (rates['EUR'] !== 1.0) {
+    throw new Error('EUR base rate must be 1.0');
+  }
+  
+  return true;
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Frontend Service" icon="window-maximize" href="/microservices/frontend">
+    See how frontend uses currency conversion
+  </Card>
+  <Card title="Checkout Service" icon="cash-register" href="/microservices/checkoutservice">
+    Learn about order currency handling
+  </Card>
+  <Card title="Data Flow" icon="diagram-project" href="/architecture/data-flow">
+    See currency conversion flow diagram
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/proto-definitions">
+    Complete Money message definition
+  </Card>
+</CardGroup>

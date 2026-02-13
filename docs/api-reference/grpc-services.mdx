@@ -1,0 +1,1142 @@
+---
+title: 'gRPC Services'
+description: 'Complete reference for all gRPC service methods in Online Boutique'
+---
+
+<Note>
+  **What's on this page?** This page shows you all the API methods you can call - like a menu of available functions. Each method does something specific, like adding an item to a cart or getting product information.
+</Note>
+
+## Overview
+
+This page documents all gRPC services and their methods. Each service provides specific functionality within the Online Boutique application.
+
+<Tip>
+  **How to use this page:** 
+  1. Find the service you need (like CartService for shopping cart operations)
+  2. Look at the available methods (like AddItem or GetCart)
+  3. Check the examples to see how to call it
+  4. Copy and adapt the code for your needs
+</Tip>
+
+<CardGroup cols={3}>
+  <Card title="9 Services" icon="server">
+    Cart, Product, Payment, and more
+  </Card>
+  <Card title="25+ Methods" icon="function">
+    Complete API coverage
+  </Card>
+  <Card title="Type-Safe" icon="shield-check">
+    Strongly-typed contracts
+  </Card>
+</CardGroup>
+
+## Service Index
+
+<AccordionGroup>
+  <Accordion title="CartService - Shopping cart management">
+    - AddItem
+    - GetCart
+    - EmptyCart
+  </Accordion>
+
+  <Accordion title="ProductCatalogService - Product information">
+    - ListProducts
+    - GetProduct
+    - SearchProducts
+  </Accordion>
+
+  <Accordion title="RecommendationService - Product recommendations">
+    - ListRecommendations
+  </Accordion>
+
+  <Accordion title="ShippingService - Shipping quotes and orders">
+    - GetQuote
+    - ShipOrder
+  </Accordion>
+
+  <Accordion title="CurrencyService - Currency conversion">
+    - GetSupportedCurrencies
+    - Convert
+  </Accordion>
+
+  <Accordion title="PaymentService - Payment processing">
+    - Charge
+  </Accordion>
+
+  <Accordion title="EmailService - Order confirmations">
+    - SendOrderConfirmation
+  </Accordion>
+
+  <Accordion title="CheckoutService - Order placement">
+    - PlaceOrder
+  </Accordion>
+
+  <Accordion title="AdService - Contextual advertisements">
+    - GetAds
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## CartService
+
+Manages shopping cart operations for users.
+
+<Tip>
+  **What does this service do?** Think of it as the shopping cart manager. It lets you add items to a cart, view what's in the cart, and empty the cart when needed.
+</Tip>
+
+**Service Definition:**
+```protobuf
+service CartService {
+    rpc AddItem(AddItemRequest) returns (Empty) {}
+    rpc GetCart(GetCartRequest) returns (Cart) {}
+    rpc EmptyCart(EmptyCartRequest) returns (Empty) {}
+}
+```
+
+**Endpoint:** `cartservice:7070`
+
+<Note>
+  **What's an endpoint?** It's the address where this service lives. Think of it like a phone number - you need to know it to call the service.
+</Note>
+
+### AddItem
+
+Adds an item to a user's shopping cart. If the item already exists, updates the quantity.
+
+<Tip>
+  **Use case:** When a user clicks "Add to Cart" on your website, you'd call this method.
+</Tip>
+
+**Request:** `AddItemRequest`
+```protobuf
+message AddItemRequest {
+    string user_id = 1;    // Which user's cart
+    CartItem item = 2;     // What to add
+}
+```
+
+**Response:** `Empty` (no data returned, just success/failure)
+
+**Example:**
+
+<CodeGroup>
+```bash cURL (Testing)
+# This is great for testing without writing code!
+grpcurl -plaintext -d '{
+  "user_id": "user123",
+  "item": {
+    "product_id": "OLJCESPC7Z",
+    "quantity": 2
+  }
+}' localhost:7070 hipstershop.CartService/AddItem
+```
+
+```go Go (Production)
+// Use this in your Go application
+req := &pb.AddItemRequest{
+    UserId: "user123",
+    Item: &pb.CartItem{
+        ProductId: "OLJCESPC7Z",
+        Quantity:  2,
+    },
+}
+_, err := client.AddItem(ctx, req)
+if err != nil {
+    log.Printf("Failed to add item: %v", err)
+}
+```
+
+```python Python (Production)
+# Use this in your Python application
+request = demo_pb2.AddItemRequest(
+    user_id="user123",
+    item=demo_pb2.CartItem(
+        product_id="OLJCESPC7Z",
+        quantity=2
+    )
+)
+try:
+    stub.AddItem(request)
+    print("Item added successfully!")
+except grpc.RpcError as e:
+    print(f"Error: {e.details()}")
+```
+</CodeGroup>
+
+**What happens:**
+1. The service checks if the product is already in the user's cart
+2. If yes, it updates the quantity
+3. If no, it adds the product as a new item
+4. The cart is saved to Redis (the database)
+
+**Error Codes:**
+- `INVALID_ARGUMENT`: Invalid product ID or quantity (e.g., negative quantity)
+- `UNAVAILABLE`: Redis connection failed (database is down)
+
+### GetCart
+
+Retrieves a user's shopping cart.
+
+**Request:** `GetCartRequest`
+```protobuf
+message GetCartRequest {
+    string user_id = 1;
+}
+```
+
+**Response:** `Cart`
+```protobuf
+message Cart {
+    string user_id = 1;
+    repeated CartItem items = 2;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "user_id": "user123"
+}' localhost:7070 hipstershop.CartService/GetCart
+```
+
+```go Go
+req := &pb.GetCartRequest{UserId: "user123"}
+cart, err := client.GetCart(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Cart has %d items\n", len(cart.Items))
+```
+
+```python Python
+request = demo_pb2.GetCartRequest(user_id="user123")
+cart = stub.GetCart(request)
+print(f"Cart has {len(cart.items)} items")
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "user_id": "user123",
+  "items": [
+    {
+      "product_id": "OLJCESPC7Z",
+      "quantity": 2
+    },
+    {
+      "product_id": "66VCHSJNUP",
+      "quantity": 1
+    }
+  ]
+}
+```
+
+### EmptyCart
+
+Removes all items from a user's cart.
+
+**Request:** `EmptyCartRequest`
+```protobuf
+message EmptyCartRequest {
+    string user_id = 1;
+}
+```
+
+**Response:** `Empty`
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "user_id": "user123"
+}' localhost:7070 hipstershop.CartService/EmptyCart
+```
+
+```go Go
+req := &pb.EmptyCartRequest{UserId: "user123"}
+_, err := client.EmptyCart(ctx, req)
+```
+</CodeGroup>
+
+---
+
+## ProductCatalogService
+
+Provides product catalog information.
+
+**Service Definition:**
+```protobuf
+service ProductCatalogService {
+    rpc ListProducts(Empty) returns (ListProductsResponse) {}
+    rpc GetProduct(GetProductRequest) returns (Product) {}
+    rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse) {}
+}
+```
+
+**Endpoint:** `productcatalogservice:3550`
+
+### ListProducts
+
+Returns all products in the catalog.
+
+**Request:** `Empty`
+
+**Response:** `ListProductsResponse`
+```protobuf
+message ListProductsResponse {
+    repeated Product products = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{}' \
+  localhost:3550 \
+  hipstershop.ProductCatalogService/ListProducts
+```
+
+```go Go
+resp, err := client.ListProducts(ctx, &pb.Empty{})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Found %d products\n", len(resp.Products))
+```
+
+```python Python
+response = stub.ListProducts(demo_pb2.Empty())
+print(f"Found {len(response.products)} products")
+```
+</CodeGroup>
+
+### GetProduct
+
+Retrieves details for a specific product.
+
+**Request:** `GetProductRequest`
+```protobuf
+message GetProductRequest {
+    string id = 1;
+}
+```
+
+**Response:** `Product`
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "id": "OLJCESPC7Z"
+}' localhost:3550 hipstershop.ProductCatalogService/GetProduct
+```
+
+```go Go
+req := &pb.GetProductRequest{Id: "OLJCESPC7Z"}
+product, err := client.GetProduct(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("%s - $%.2f\n", product.Name, float64(product.PriceUsd.Units))
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "id": "OLJCESPC7Z",
+  "name": "Vintage Typewriter",
+  "description": "This typewriter looks good in your living room.",
+  "picture": "/static/img/products/typewriter.jpg",
+  "price_usd": {
+    "currency_code": "USD",
+    "units": 67,
+    "nanos": 990000000
+  },
+  "categories": ["vintage"]
+}
+```
+
+**Error Codes:**
+- `NOT_FOUND`: Product ID doesn't exist
+
+### SearchProducts
+
+Searches for products matching a query.
+
+**Request:** `SearchProductsRequest`
+```protobuf
+message SearchProductsRequest {
+    string query = 1;
+}
+```
+
+**Response:** `SearchProductsResponse`
+```protobuf
+message SearchProductsResponse {
+    repeated Product results = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "query": "typewriter"
+}' localhost:3550 hipstershop.ProductCatalogService/SearchProducts
+```
+
+```go Go
+req := &pb.SearchProductsRequest{Query: "typewriter"}
+resp, err := client.SearchProducts(ctx, req)
+```
+</CodeGroup>
+
+---
+
+## RecommendationService
+
+Provides product recommendations based on user context.
+
+**Service Definition:**
+```protobuf
+service RecommendationService {
+    rpc ListRecommendations(ListRecommendationsRequest) returns (ListRecommendationsResponse) {}
+}
+```
+
+**Endpoint:** `recommendationservice:8080`
+
+### ListRecommendations
+
+Returns product recommendations for a user.
+
+**Request:** `ListRecommendationsRequest`
+```protobuf
+message ListRecommendationsRequest {
+    string user_id = 1;
+    repeated string product_ids = 2;
+}
+```
+
+**Response:** `ListRecommendationsResponse`
+```protobuf
+message ListRecommendationsResponse {
+    repeated string product_ids = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "user_id": "user123",
+  "product_ids": ["OLJCESPC7Z", "66VCHSJNUP"]
+}' localhost:8080 hipstershop.RecommendationService/ListRecommendations
+```
+
+```go Go
+req := &pb.ListRecommendationsRequest{
+    UserId:     "user123",
+    ProductIds: []string{"OLJCESPC7Z", "66VCHSJNUP"},
+}
+resp, err := client.ListRecommendations(ctx, req)
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "product_ids": ["2ZYFJ3GM2N", "L9ECAV7KIM", "LS4PSXUNUM"]
+}
+```
+
+---
+
+## ShippingService
+
+Handles shipping quotes and order shipment.
+
+**Service Definition:**
+```protobuf
+service ShippingService {
+    rpc GetQuote(GetQuoteRequest) returns (GetQuoteResponse) {}
+    rpc ShipOrder(ShipOrderRequest) returns (ShipOrderResponse) {}
+}
+```
+
+**Endpoint:** `shippingservice:50051`
+
+### GetQuote
+
+Calculates shipping cost for items to an address.
+
+**Request:** `GetQuoteRequest`
+```protobuf
+message GetQuoteRequest {
+    Address address = 1;
+    repeated CartItem items = 2;
+}
+```
+
+**Response:** `GetQuoteResponse`
+```protobuf
+message GetQuoteResponse {
+    Money cost_usd = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "address": {
+    "street_address": "1600 Amphitheatre Parkway",
+    "city": "Mountain View",
+    "state": "CA",
+    "country": "United States",
+    "zip_code": 94043
+  },
+  "items": [
+    {"product_id": "OLJCESPC7Z", "quantity": 1}
+  ]
+}' localhost:50051 hipstershop.ShippingService/GetQuote
+```
+
+```go Go
+req := &pb.GetQuoteRequest{
+    Address: &pb.Address{
+        StreetAddress: "1600 Amphitheatre Parkway",
+        City:          "Mountain View",
+        State:         "CA",
+        Country:       "United States",
+        ZipCode:       94043,
+    },
+    Items: []*pb.CartItem{
+        {ProductId: "OLJCESPC7Z", Quantity: 1},
+    },
+}
+quote, err := client.GetQuote(ctx, req)
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "cost_usd": {
+    "currency_code": "USD",
+    "units": 8,
+    "nanos": 990000000
+  }
+}
+```
+
+### ShipOrder
+
+Creates a shipment for an order.
+
+**Request:** `ShipOrderRequest`
+```protobuf
+message ShipOrderRequest {
+    Address address = 1;
+    repeated CartItem items = 2;
+}
+```
+
+**Response:** `ShipOrderResponse`
+```protobuf
+message ShipOrderResponse {
+    string tracking_id = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "address": {...},
+  "items": [...]
+}' localhost:50051 hipstershop.ShippingService/ShipOrder
+```
+
+```go Go
+req := &pb.ShipOrderRequest{
+    Address: address,
+    Items:   items,
+}
+resp, err := client.ShipOrder(ctx, req)
+fmt.Printf("Tracking ID: %s\n", resp.TrackingId)
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "tracking_id": "9c17b5a8-3f03-4c1e-a1c6-3e3b3f3c3e3b"
+}
+```
+
+---
+
+## CurrencyService
+
+Provides currency conversion functionality.
+
+**Service Definition:**
+```protobuf
+service CurrencyService {
+    rpc GetSupportedCurrencies(Empty) returns (GetSupportedCurrenciesResponse) {}
+    rpc Convert(CurrencyConversionRequest) returns (Money) {}
+}
+```
+
+**Endpoint:** `currencyservice:7000`
+
+### GetSupportedCurrencies
+
+Returns list of supported currency codes.
+
+**Request:** `Empty`
+
+**Response:** `GetSupportedCurrenciesResponse`
+```protobuf
+message GetSupportedCurrenciesResponse {
+    repeated string currency_codes = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{}' \
+  localhost:7000 \
+  hipstershop.CurrencyService/GetSupportedCurrencies
+```
+
+```go Go
+resp, err := client.GetSupportedCurrencies(ctx, &pb.Empty{})
+fmt.Printf("Supported: %v\n", resp.CurrencyCodes)
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "currency_codes": ["EUR", "USD", "JPY", "GBP", "CAD"]
+}
+```
+
+### Convert
+
+Converts an amount from one currency to another.
+
+**Request:** `CurrencyConversionRequest`
+```protobuf
+message CurrencyConversionRequest {
+    Money from = 1;
+    string to_code = 2;
+}
+```
+
+**Response:** `Money`
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "from": {
+    "currency_code": "USD",
+    "units": 100,
+    "nanos": 0
+  },
+  "to_code": "EUR"
+}' localhost:7000 hipstershop.CurrencyService/Convert
+```
+
+```go Go
+req := &pb.CurrencyConversionRequest{
+    From: &pb.Money{
+        CurrencyCode: "USD",
+        Units:        100,
+        Nanos:        0,
+    },
+    ToCode: "EUR",
+}
+converted, err := client.Convert(ctx, req)
+```
+</CodeGroup>
+
+**Error Codes:**
+- `INVALID_ARGUMENT`: Unsupported currency code
+
+---
+
+## PaymentService
+
+Processes credit card payments.
+
+**Service Definition:**
+```protobuf
+service PaymentService {
+    rpc Charge(ChargeRequest) returns (ChargeResponse) {}
+}
+```
+
+**Endpoint:** `paymentservice:50051`
+
+### Charge
+
+Charges a credit card for a specified amount.
+
+**Request:** `ChargeRequest`
+```protobuf
+message ChargeRequest {
+    Money amount = 1;
+    CreditCardInfo credit_card = 2;
+}
+```
+
+**Response:** `ChargeResponse`
+```protobuf
+message ChargeResponse {
+    string transaction_id = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "amount": {
+    "currency_code": "USD",
+    "units": 99,
+    "nanos": 990000000
+  },
+  "credit_card": {
+    "credit_card_number": "4432-8015-6152-0454",
+    "credit_card_cvv": 672,
+    "credit_card_expiration_year": 2025,
+    "credit_card_expiration_month": 12
+  }
+}' localhost:50051 hipstershop.PaymentService/Charge
+```
+
+```go Go
+req := &pb.ChargeRequest{
+    Amount: &pb.Money{
+        CurrencyCode: "USD",
+        Units:        99,
+        Nanos:        990000000,
+    },
+    CreditCard: &pb.CreditCardInfo{
+        CreditCardNumber:          "4432-8015-6152-0454",
+        CreditCardCvv:             672,
+        CreditCardExpirationYear:  2025,
+        CreditCardExpirationMonth: 12,
+    },
+}
+resp, err := client.Charge(ctx, req)
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "transaction_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Error Codes:**
+- `INVALID_ARGUMENT`: Invalid card number (fails Luhn check)
+- `PERMISSION_DENIED`: Unsupported card type (only VISA/MasterCard)
+- `PERMISSION_DENIED`: Expired card
+
+---
+
+## EmailService
+
+Sends order confirmation emails.
+
+**Service Definition:**
+```protobuf
+service EmailService {
+    rpc SendOrderConfirmation(SendOrderConfirmationRequest) returns (Empty) {}
+}
+```
+
+**Endpoint:** `emailservice:5000`
+
+### SendOrderConfirmation
+
+Sends an order confirmation email to a customer.
+
+**Request:** `SendOrderConfirmationRequest`
+```protobuf
+message SendOrderConfirmationRequest {
+    string email = 1;
+    OrderResult order = 2;
+}
+```
+
+**Response:** `Empty`
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "email": "customer@example.com",
+  "order": {
+    "order_id": "abc-123",
+    "shipping_tracking_id": "track-456",
+    "shipping_cost": {"currency_code": "USD", "units": 8, "nanos": 990000000},
+    "shipping_address": {...},
+    "items": [...]
+  }
+}' localhost:5000 hipstershop.EmailService/SendOrderConfirmation
+```
+
+```go Go
+req := &pb.SendOrderConfirmationRequest{
+    Email: "customer@example.com",
+    Order: orderResult,
+}
+_, err := client.SendOrderConfirmation(ctx, req)
+```
+</CodeGroup>
+
+---
+
+## CheckoutService
+
+Orchestrates the checkout process.
+
+**Service Definition:**
+```protobuf
+service CheckoutService {
+    rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse) {}
+}
+```
+
+**Endpoint:** `checkoutservice:5050`
+
+### PlaceOrder
+
+Places an order, coordinating cart, payment, shipping, and email services.
+
+**Request:** `PlaceOrderRequest`
+```protobuf
+message PlaceOrderRequest {
+    string user_id = 1;
+    string user_currency = 2;
+    Address address = 3;
+    string email = 5;
+    CreditCardInfo credit_card = 6;
+}
+```
+
+**Response:** `PlaceOrderResponse`
+```protobuf
+message PlaceOrderResponse {
+    OrderResult order = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "user_id": "user123",
+  "user_currency": "USD",
+  "address": {
+    "street_address": "1600 Amphitheatre Parkway",
+    "city": "Mountain View",
+    "state": "CA",
+    "country": "United States",
+    "zip_code": 94043
+  },
+  "email": "customer@example.com",
+  "credit_card": {
+    "credit_card_number": "4432-8015-6152-0454",
+    "credit_card_cvv": 672,
+    "credit_card_expiration_year": 2025,
+    "credit_card_expiration_month": 12
+  }
+}' localhost:5050 hipstershop.CheckoutService/PlaceOrder
+```
+
+```go Go
+req := &pb.PlaceOrderRequest{
+    UserId:       "user123",
+    UserCurrency: "USD",
+    Address:      address,
+    Email:        "customer@example.com",
+    CreditCard:   creditCard,
+}
+resp, err := client.PlaceOrder(ctx, req)
+```
+</CodeGroup>
+
+**What PlaceOrder Does:**
+1. Retrieves user's cart
+2. Calculates shipping cost
+3. Converts prices to user's currency
+4. Charges credit card
+5. Ships the order
+6. Sends confirmation email
+7. Empties the cart
+
+**Error Codes:**
+- `INVALID_ARGUMENT`: Invalid input data
+- `NOT_FOUND`: Cart is empty
+- `PERMISSION_DENIED`: Payment failed
+
+---
+
+## AdService
+
+Provides contextual advertisements.
+
+**Service Definition:**
+```protobuf
+service AdService {
+    rpc GetAds(AdRequest) returns (AdResponse) {}
+}
+```
+
+**Endpoint:** `adservice:9555`
+
+### GetAds
+
+Returns relevant ads based on context keywords.
+
+**Request:** `AdRequest`
+```protobuf
+message AdRequest {
+    repeated string context_keys = 1;
+}
+```
+
+**Response:** `AdResponse`
+```protobuf
+message AdResponse {
+    repeated Ad ads = 1;
+}
+```
+
+**Example:**
+
+<CodeGroup>
+```bash cURL
+grpcurl -plaintext -d '{
+  "context_keys": ["photography", "camera", "vintage"]
+}' localhost:9555 hipstershop.AdService/GetAds
+```
+
+```go Go
+req := &pb.AdRequest{
+    ContextKeys: []string{"photography", "camera", "vintage"},
+}
+resp, err := client.GetAds(ctx, req)
+```
+</CodeGroup>
+
+**Response Example:**
+```json
+{
+  "ads": [
+    {
+      "redirect_url": "/product/2ZYFJ3GM2N",
+      "text": "Film camera for sale. 50% off."
+    },
+    {
+      "redirect_url": "/product/66VCHSJNUP",
+      "text": "Vintage camera lens for sale. 20% off."
+    }
+  ]
+}
+```
+
+---
+
+## Error Handling
+
+All services use standard gRPC status codes. When something goes wrong, you'll get one of these codes to help you understand what happened.
+
+<Tip>
+  **Beginner Tip:** Always check for errors in your code! Don't assume API calls will always succeed. Networks fail, services go down, and users make mistakes.
+</Tip>
+
+| Code | When It Happens | What To Do | Example |
+|------|-----------------|------------|---------|
+| `OK` | Success! | Nothing - it worked | Request completed successfully |
+| `INVALID_ARGUMENT` | Bad input data | Check your request data | Invalid product ID format |
+| `NOT_FOUND` | Resource doesn't exist | Verify the ID exists | Product ID "XYZ" doesn't exist |
+| `ALREADY_EXISTS` | Duplicate resource | Check if it already exists | Item already in cart |
+| `PERMISSION_DENIED` | Not allowed | Check credentials/validation | Expired credit card |
+| `UNAVAILABLE` | Service is down | Retry later or show error | Database connection failed |
+| `INTERNAL` | Unexpected server error | Report to developers | Unhandled exception |
+
+**Example Error Handling:**
+
+<Tabs>
+  <Tab title="Go">
+    ```go
+    resp, err := client.GetProduct(ctx, req)
+    if err != nil {
+        // Check what kind of error it is
+        if status.Code(err) == codes.NotFound {
+            fmt.Println("Product not found - maybe it was deleted?")
+        } else if status.Code(err) == codes.InvalidArgument {
+            fmt.Println("Invalid product ID - check your input")
+        } else {
+            fmt.Printf("Unexpected error: %v\n", err)
+        }
+        return err
+    }
+    // Success! Use the response
+    fmt.Printf("Product: %s\n", resp.Name)
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    ```python
+    try:
+        response = stub.GetProduct(request)
+        print(f"Product: {response.name}")
+    except grpc.RpcError as e:
+        # Check the error code
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            print("Product not found - maybe it was deleted?")
+        elif e.code() == grpc.StatusCode.INVALID_ARGUMENT:
+            print("Invalid product ID - check your input")
+        else:
+            print(f"Unexpected error: {e.details()}")
+    ```
+  </Tab>
+
+  <Tab title="Node.js">
+    ```javascript
+    client.getProduct({ id: productId }, (err, response) => {
+        if (err) {
+            // Check the error code
+            if (err.code === grpc.status.NOT_FOUND) {
+                console.log("Product not found - maybe it was deleted?");
+            } else if (err.code === grpc.status.INVALID_ARGUMENT) {
+                console.log("Invalid product ID - check your input");
+            } else {
+                console.log(`Unexpected error: ${err.message}`);
+            }
+            return;
+        }
+        // Success! Use the response
+        console.log(`Product: ${response.name}`);
+    });
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  **Common Mistake:** Don't ignore errors! Always check if an API call succeeded before using the response data.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Proto Definitions" icon="file-code" href="/api-reference/proto-definitions">
+    View all message type definitions
+  </Card>
+  <Card title="Microservices" icon="server" href="/microservices/overview">
+    Learn about each microservice
+  </Card>
+</CardGroup>
+
+---
+
+## Common Issues & Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection Refused Error">
+    **Problem:** Can't connect to the service
+    
+    **Solutions:**
+    - Check if the service is running: `kubectl get pods`
+    - Verify the endpoint address and port
+    - Make sure you're using the correct namespace
+    - Check if there's a firewall blocking the connection
+  </Accordion>
+
+  <Accordion title="Invalid Argument Error">
+    **Problem:** Getting `INVALID_ARGUMENT` errors
+    
+    **Solutions:**
+    - Double-check your request data matches the proto definition
+    - Verify all required fields are included
+    - Check data types (string vs int, etc.)
+    - Look at the error message for specific details
+  </Accordion>
+
+  <Accordion title="Deadline Exceeded Error">
+    **Problem:** Request times out
+    
+    **Solutions:**
+    - Increase the timeout in your client code
+    - Check if the service is overloaded
+    - Verify network connectivity
+    - Look for slow database queries
+  </Accordion>
+
+  <Accordion title="Not Found Error">
+    **Problem:** Resource doesn't exist
+    
+    **Solutions:**
+    - Verify the ID is correct (check for typos)
+    - Make sure the resource was created successfully
+    - Check if it was deleted
+    - Try listing all resources to see what exists
+  </Accordion>
+
+  <Accordion title="Can't Generate Client Code">
+    **Problem:** `protoc` command fails
+    
+    **Solutions:**
+    - Install Protocol Buffers compiler: `brew install protobuf` (Mac) or download from [protobuf releases](https://github.com/protocolbuffers/protobuf/releases)
+    - Install language-specific plugins (e.g., `protoc-gen-go`)
+    - Check your proto file syntax
+    - Verify import paths are correct
+  </Accordion>
+</AccordionGroup>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="gRPC Documentation" icon="book" href="https://grpc.io/docs/">
+    Official gRPC documentation and tutorials
+  </Card>
+  <Card title="Protocol Buffers Guide" icon="file" href="https://protobuf.dev/">
+    Learn more about Protocol Buffers
+  </Card>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/GoogleCloudPlatform/microservices-demo/issues">
+    Report bugs or ask questions
+  </Card>
+  <Card title="Stack Overflow" icon="stack-overflow" href="https://stackoverflow.com/questions/tagged/grpc">
+    Community Q&A for gRPC
+  </Card>
+</CardGroup>

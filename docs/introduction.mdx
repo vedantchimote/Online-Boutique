@@ -1,0 +1,145 @@
+---
+title: Welcome to Online Boutique
+description: A cloud-native microservices demo application showcasing modern application architecture on Google Cloud Platform
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/online-boutique-frontend-1.png"
+  alt="Online Boutique Homepage"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/online-boutique-frontend-1.png"
+  alt="Online Boutique Homepage"
+/>
+
+## What is Online Boutique?
+
+**Online Boutique** is a cloud-first microservices demo application. The application is a web-based e-commerce platform where users can browse items, add them to their cart, and purchase them.
+
+Google uses this application to demonstrate how developers can modernize enterprise applications using Google Cloud products, including:
+
+<CardGroup cols={2}>
+  <Card title="Google Kubernetes Engine" icon="dharmachakra" href="https://cloud.google.com/kubernetes-engine">
+    Managed Kubernetes service for container orchestration
+  </Card>
+  <Card title="Cloud Service Mesh" icon="network-wired" href="https://cloud.google.com/service-mesh">
+    Service mesh for secure service-to-service communication
+  </Card>
+  <Card title="Cloud Operations" icon="chart-line" href="https://cloud.google.com/products/operations">
+    Monitoring, logging, and diagnostics for cloud applications
+  </Card>
+  <Card title="gRPC" icon="bolt" href="https://grpc.io/">
+    High-performance RPC framework for microservices
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="Polyglot Microservices Architecture" icon="code">
+    11 microservices written in 5 different languages (Go, C#, Node.js, Python, Java) demonstrating real-world polyglot architecture patterns.
+  </Accordion>
+  
+  <Accordion title="gRPC Communication" icon="arrows-left-right">
+    All services communicate via gRPC with Protocol Buffers, showcasing modern inter-service communication patterns.
+  </Accordion>
+  
+  <Accordion title="Cloud-Native Design" icon="cloud">
+    Built for Kubernetes with support for multiple deployment options including Helm, Terraform, and Kustomize.
+  </Accordion>
+  
+  <Accordion title="Observability Ready" icon="eye">
+    Integrated with Cloud Operations for monitoring, logging, tracing, and profiling out of the box.
+  </Accordion>
+  
+  <Accordion title="Production Patterns" icon="shield-check">
+    Demonstrates best practices including health checks, graceful shutdown, circuit breakers, and retry logic.
+  </Accordion>
+</AccordionGroup>
+
+## Architecture Overview
+
+Online Boutique consists of **11 microservices** that work together to provide a complete e-commerce experience:
+
+| Service | Language | Purpose |
+|---------|----------|---------|
+| **Frontend** | Go | Web UI and API gateway |
+| **Cart Service** | C# | Shopping cart management |
+| **Product Catalog** | Go | Product inventory and search |
+| **Currency Service** | Node.js | Multi-currency support |
+| **Payment Service** | Node.js | Payment processing |
+| **Shipping Service** | Go | Shipping cost calculation |
+| **Email Service** | Python | Order confirmation emails |
+| **Checkout Service** | Go | Order orchestration |
+| **Recommendation** | Python | Product recommendations |
+| **Ad Service** | Java | Contextual advertisements |
+| **Load Generator** | Python | Traffic simulation |
+
+<img src="/images/architecture-diagram.png" alt="Architecture Diagram" />
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/getting-started/quickstart">
+    Deploy Online Boutique to GKE in minutes
+  </Card>
+  <Card title="Architecture Deep Dive" icon="sitemap" href="/architecture/overview">
+    Understand the system design and service interactions
+  </Card>
+  <Card title="Local Development" icon="laptop-code" href="/development/setup">
+    Set up your local development environment
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference/overview">
+    Explore the gRPC APIs and Protocol Buffers
+  </Card>
+</CardGroup>
+
+## Why Online Boutique?
+
+<Note>
+  Online Boutique is designed to be **accessible to Kubernetes beginners** while demonstrating **production-ready patterns** for experienced developers.
+</Note>
+
+### For Learning
+- Understand microservices architecture patterns
+- Learn Kubernetes deployment and management
+- Explore gRPC and Protocol Buffers
+- Practice with cloud-native observability tools
+
+### For Demonstrations
+- Showcase Google Cloud Platform capabilities
+- Demonstrate service mesh implementations
+- Illustrate CI/CD pipelines
+- Present monitoring and debugging workflows
+
+### For Testing
+- Benchmark Kubernetes performance
+- Test observability tools and platforms
+- Validate deployment automation
+- Experiment with cloud services integration
+
+## Community and Support
+
+<CardGroup cols={3}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/GoogleCloudPlatform/microservices-demo">
+    View source code and contribute
+  </Card>
+  <Card title="Report Issues" icon="bug" href="https://github.com/GoogleCloudPlatform/microservices-demo/issues">
+    Found a bug? Let us know
+  </Card>
+  <Card title="Discussions" icon="comments" href="https://github.com/GoogleCloudPlatform/microservices-demo/discussions">
+    Join the community discussion
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+Ready to get started? Follow our quickstart guide to deploy Online Boutique in minutes:
+
+<Card title="Deploy to GKE" icon="play" href="/getting-started/quickstart">
+  Follow the step-by-step guide to deploy Online Boutique to Google Kubernetes Engine
+</Card>
+
+Or explore the documentation to learn more about the architecture, individual microservices, and deployment options.

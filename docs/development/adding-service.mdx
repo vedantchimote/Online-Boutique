@@ -1,0 +1,859 @@
+---
+title: 'Adding a New Microservice'
+description: 'Step-by-step guide to adding a new microservice to Online Boutique'
+---
+
+## Overview
+
+This guide walks you through adding a new microservice to the Online Boutique application. While the core set of microservices is fairly complete, you may want to add optional services to extend functionality.
+
+<Info>
+  This guide assumes you're familiar with the [architecture](/architecture/overview) and have completed the [development setup](/development/setup).
+</Info>
+
+## Before You Start
+
+Consider these questions before adding a new service:
+
+<AccordionGroup>
+  <Accordion title="Is a new service necessary?">
+    Could the functionality be added to an existing service? New services add operational complexity.
+  </Accordion>
+
+  <Accordion title="What will the service do?">
+    Define clear responsibilities and boundaries for the service.
+  </Accordion>
+
+  <Accordion title="Which services will it interact with?">
+    Identify dependencies and communication patterns.
+  </Accordion>
+
+  <Accordion title="What language/framework will you use?">
+    Consider team expertise and consistency with existing services.
+  </Accordion>
+</AccordionGroup>
+
+## Step-by-Step Guide
+
+### Step 1: Create Service Directory
+
+Create a new directory for your microservice in the `src/` directory:
+
+```bash
+cd src/
+mkdir myservice
+cd myservice
+```
+
+The directory name should match your service name (lowercase, no spaces).
+
+### Step 2: Add Source Code
+
+Create the basic structure for your service. The structure depends on your chosen language:
+
+<Tabs>
+  <Tab title="Go">
+    ```bash
+    # Create Go module
+    go mod init github.com/GoogleCloudPlatform/microservices-demo/src/myservice
+    
+    # Create main file
+    touch main.go
+    
+    # Create README
+    touch README.md
+    ```
+    
+    **Minimal main.go:**
+    ```go
+    package main
+    
+    import (
+        "context"
+        "fmt"
+        "log"
+        "net"
+        
+        "google.golang.org/grpc"
+        pb "github.com/GoogleCloudPlatform/microservices-demo/src/myservice/genproto"
+    )
+    
+    type server struct {
+        pb.UnimplementedMyServiceServer
+    }
+    
+    func main() {
+        port := "8080"
+        lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+        if err != nil {
+            log.Fatalf("failed to listen: %v", err)
+        }
+        
+        s := grpc.NewServer()
+        pb.RegisterMyServiceServer(s, &server{})
+        
+        log.Printf("MyService listening on port %s", port)
+        if err := s.Serve(lis); err != nil {
+            log.Fatalf("failed to serve: %v", err)
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Node.js">
+    ```bash
+    # Initialize npm project
+    npm init -y
+    
+    # Install dependencies
+    npm install @grpc/grpc-js @grpc/proto-loader
+    
+    # Create main file
+    touch index.js
+    
+    # Create README
+    touch README.md
+    ```
+    
+    **Minimal index.js:**
+    ```javascript
+    const grpc = require('@grpc/grpc-js');
+    const protoLoader = require('@grpc/proto-loader');
+    
+    const PROTO_PATH = './proto/myservice.proto';
+    const PORT = process.env.PORT || 8080;
+    
+    const packageDefinition = protoLoader.loadSync(PROTO_PATH);
+    const proto = grpc.loadPackageDefinition(packageDefinition);
+    
+    function main() {
+        const server = new grpc.Server();
+        server.addService(proto.MyService.service, {
+            // Add your service methods here
+        });
+        
+        server.bindAsync(
+            `0.0.0.0:${PORT}`,
+            grpc.ServerCredentials.createInsecure(),
+            () => {
+                console.log(`MyService listening on port ${PORT}`);
+                server.start();
+            }
+        );
+    }
+    
+    main();
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    ```bash
+    # Create main file
+    touch main.py
+    
+    # Create requirements
+    touch requirements.in
+    
+    # Create README
+    touch README.md
+    ```
+    
+    **requirements.in:**
+    ```
+    grpcio==1.60.0
+    grpcio-tools==1.60.0
+    ```
+    
+    **Minimal main.py:**
+    ```python
+    import os
+    import grpc
+    from concurrent import futures
+    import myservice_pb2
+    import myservice_pb2_grpc
+    
+    class MyService(myservice_pb2_grpc.MyServiceServicer):
+        def MyMethod(self, request, context):
+            # Implement your method
+            return myservice_pb2.MyResponse()
+    
+    def serve():
+        port = os.environ.get('PORT', '8080')
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        myservice_pb2_grpc.add_MyServiceServicer_to_server(
+            MyService(), server
+        )
+        server.add_insecure_port(f'[::]:{port}')
+        print(f'MyService listening on port {port}')
+        server.start()
+        server.wait_for_termination()
+    
+    if __name__ == '__main__':
+        serve()
+    ```
+  </Tab>
+</Tabs>
+
+### Step 3: Define Protocol Buffers
+
+Create a `.proto` file defining your service's gRPC API:
+
+```bash
+# Create proto directory if it doesn't exist
+mkdir -p ../../protos
+
+# Create your service proto file
+touch ../../protos/myservice.proto
+```
+
+**Example myservice.proto:**
+
+```protobuf
+syntax = "proto3";
+
+package hipstershop;
+
+option go_package = "github.com/GoogleCloudPlatform/microservices-demo/src/myservice/genproto";
+
+service MyService {
+    rpc MyMethod(MyRequest) returns (MyResponse) {}
+}
+
+message MyRequest {
+    string user_id = 1;
+    string data = 2;
+}
+
+message MyResponse {
+    string result = 1;
+    bool success = 2;
+}
+```
+
+<Tip>
+  Follow the existing proto file conventions in the `protos/` directory. Use consistent naming and package structure.
+</Tip>
+
+### Step 4: Create Dockerfile
+
+Create a `Dockerfile` to containerize your service:
+
+```dockerfile
+# Example for Go service
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+COPY go.* ./
+RUN go mod download
+
+COPY . .
+RUN go build -o /myservice .
+
+FROM alpine:3.18
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /myservice /myservice
+
+EXPOSE 8080
+ENTRYPOINT ["/myservice"]
+```
+
+<Tabs>
+  <Tab title="Go">
+    ```dockerfile
+    FROM golang:1.21-alpine AS builder
+    WORKDIR /app
+    COPY go.* ./
+    RUN go mod download
+    COPY . .
+    RUN go build -o /myservice .
+    
+    FROM alpine:3.18
+    RUN apk add --no-cache ca-certificates
+    COPY --from=builder /myservice /myservice
+    EXPOSE 8080
+    ENTRYPOINT ["/myservice"]
+    ```
+  </Tab>
+
+  <Tab title="Node.js">
+    ```dockerfile
+    FROM node:20-alpine
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci --only=production
+    COPY . .
+    EXPOSE 8080
+    ENTRYPOINT ["node", "index.js"]
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    ```dockerfile
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY requirements.txt ./
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY . .
+    EXPOSE 8080
+    ENTRYPOINT ["python", "main.py"]
+    ```
+  </Tab>
+</Tabs>
+
+### Step 5: Create Kubernetes Manifests
+
+Create a Kustomize component for your service:
+
+```bash
+mkdir -p ../../kustomize/components/myservice
+cd ../../kustomize/components/myservice
+```
+
+Create `kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+- deployment.yaml
+- service.yaml
+```
+
+Create `deployment.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myservice
+spec:
+  selector:
+    matchLabels:
+      app: myservice
+  template:
+    metadata:
+      labels:
+        app: myservice
+    spec:
+      serviceAccountName: default
+      terminationGracePeriodSeconds: 5
+      containers:
+      - name: server
+        image: myservice
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        - name: DISABLE_PROFILER
+          value: "1"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        readinessProbe:
+          grpc:
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 15
+        livenessProbe:
+          grpc:
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 15
+```
+
+Create `service.yaml`:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: myservice
+spec:
+  type: ClusterIP
+  selector:
+    app: myservice
+  ports:
+  - name: grpc
+    port: 8080
+    targetPort: 8080
+```
+
+<Note>
+  Adjust resource requests/limits based on your service's actual requirements. Start conservative and adjust based on monitoring.
+</Note>
+
+### Step 6: Update Root Kustomization
+
+Add your component to the root `kustomization.yaml`:
+
+```bash
+cd ../../
+```
+
+Edit `kustomize/kustomization.yaml` and add your component:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- base
+
+components:
+- components/myservice  # Add this line
+```
+
+### Step 7: Update Skaffold Configuration
+
+Add your service to the root `skaffold.yaml`:
+
+```yaml
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: myservice
+build:
+  artifacts:
+  - image: myservice
+    context: src/myservice
+    docker:
+      dockerfile: Dockerfile
+manifests:
+  kustomize:
+    paths:
+    - kustomize
+```
+
+<Warning>
+  Ensure the image name in `skaffold.yaml` matches the image name in your Kubernetes manifests.
+</Warning>
+
+### Step 8: Update Helm Chart (Optional)
+
+If you want your service to be deployable via Helm, add it to the Helm chart:
+
+```bash
+cd helm-chart/templates
+```
+
+Create `myservice.yaml`:
+
+```yaml
+{{- if .Values.myservice.create }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myservice
+spec:
+  selector:
+    matchLabels:
+      app: myservice
+  template:
+    metadata:
+      labels:
+        app: myservice
+    spec:
+      containers:
+      - name: server
+        image: {{ .Values.images.repository }}/myservice:{{ .Values.images.tag | default .Chart.AppVersion }}
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        resources:
+          {{- toYaml .Values.myservice.resources | nindent 10 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myservice
+spec:
+  type: ClusterIP
+  selector:
+    app: myservice
+  ports:
+  - name: grpc
+    port: 8080
+    targetPort: 8080
+{{- end }}
+```
+
+Update `helm-chart/values.yaml`:
+
+```yaml
+myservice:
+  create: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+```
+
+### Step 9: Add Documentation
+
+Create a comprehensive README for your service:
+
+```markdown
+# My Service
+
+## Description
+
+Brief description of what this service does.
+
+## Technology Stack
+
+- Language: [Go/Node.js/Python/etc.]
+- Framework: [if applicable]
+- Dependencies: [key dependencies]
+
+## API
+
+### gRPC Methods
+
+#### MyMethod
+
+Description of what this method does.
+
+**Request:**
+```protobuf
+message MyRequest {
+    string user_id = 1;
+    string data = 2;
+}
+```
+
+**Response:**
+```protobuf
+message MyResponse {
+    string result = 1;
+    bool success = 2;
+}
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| PORT | gRPC server port | 8080 |
+
+## Development
+
+### Running Locally
+
+```bash
+# Install dependencies
+[language-specific commands]
+
+# Run service
+[language-specific commands]
+```
+
+### Testing
+
+```bash
+[test commands]
+```
+
+## Deployment
+
+Deployed as part of Online Boutique using Skaffold/Kustomize/Helm.
+```
+
+### Step 10: Update Architecture Documentation
+
+Update the architecture documentation to include your new service:
+
+1. Add your service to the architecture diagram in `docs/architecture/overview.mdx`
+2. Document service dependencies
+3. Add your service to the microservices list
+
+### Step 11: Test Your Service
+
+Build and deploy your service:
+
+```bash
+# From repository root
+skaffold run
+
+# Verify pod is running
+kubectl get pods -l app=myservice
+
+# Check logs
+kubectl logs -l app=myservice
+
+# Test the service
+kubectl port-forward deployment/myservice 8080:8080
+```
+
+Test your gRPC endpoints:
+
+```bash
+# Install grpcurl
+go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+
+# List services
+grpcurl -plaintext localhost:8080 list
+
+# Call your method
+grpcurl -plaintext -d '{"user_id": "test", "data": "hello"}' \
+  localhost:8080 hipstershop.MyService/MyMethod
+```
+
+## Integration Checklist
+
+Use this checklist to ensure your service is fully integrated:
+
+<Steps>
+  <Step title="Source Code">
+    - [ ] Service directory created in `src/`
+    - [ ] Source code implements core functionality
+    - [ ] README.md documents the service
+    - [ ] Dependencies are properly managed
+  </Step>
+
+  <Step title="Protocol Buffers">
+    - [ ] Proto file created in `protos/`
+    - [ ] Service and messages defined
+    - [ ] Proto follows naming conventions
+  </Step>
+
+  <Step title="Containerization">
+    - [ ] Dockerfile created
+    - [ ] Image builds successfully
+    - [ ] Image size is optimized
+  </Step>
+
+  <Step title="Kubernetes">
+    - [ ] Kustomize component created
+    - [ ] Deployment manifest configured
+    - [ ] Service manifest configured
+    - [ ] Resource limits set appropriately
+    - [ ] Health checks configured
+  </Step>
+
+  <Step title="Build Configuration">
+    - [ ] Added to root `kustomization.yaml`
+    - [ ] Added to `skaffold.yaml`
+    - [ ] Helm chart updated (if applicable)
+  </Step>
+
+  <Step title="Testing">
+    - [ ] Unit tests written
+    - [ ] Service deploys successfully
+    - [ ] gRPC endpoints respond correctly
+    - [ ] Integration with other services works
+  </Step>
+
+  <Step title="Documentation">
+    - [ ] Service README complete
+    - [ ] Architecture docs updated
+    - [ ] API documentation added
+  </Step>
+</Steps>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Follow Existing Patterns">
+    Study existing services and follow their patterns for:
+    - Project structure
+    - Error handling
+    - Logging
+    - Configuration
+    - Testing
+  </Accordion>
+
+  <Accordion title="Keep Services Small">
+    Each service should have a single, well-defined responsibility. If your service is doing too much, consider splitting it.
+  </Accordion>
+
+  <Accordion title="Design for Failure">
+    - Implement proper error handling
+    - Add retry logic for external calls
+    - Use circuit breakers for dependencies
+    - Set appropriate timeouts
+  </Accordion>
+
+  <Accordion title="Observability">
+    - Add structured logging
+    - Expose metrics
+    - Implement distributed tracing
+    - Add health check endpoints
+  </Accordion>
+
+  <Accordion title="Security">
+    - Validate all inputs
+    - Use least privilege principles
+    - Don't log sensitive data
+    - Keep dependencies updated
+  </Accordion>
+</AccordionGroup>
+
+## Example: Adding a Review Service
+
+Here's a complete example of adding a review service:
+
+<Tabs>
+  <Tab title="Proto Definition">
+    ```protobuf
+    syntax = "proto3";
+    
+    package hipstershop;
+    
+    service ReviewService {
+        rpc AddReview(AddReviewRequest) returns (AddReviewResponse) {}
+        rpc GetReviews(GetReviewsRequest) returns (GetReviewsResponse) {}
+    }
+    
+    message AddReviewRequest {
+        string product_id = 1;
+        string user_id = 2;
+        int32 rating = 3;
+        string comment = 4;
+    }
+    
+    message AddReviewResponse {
+        string review_id = 1;
+    }
+    
+    message GetReviewsRequest {
+        string product_id = 1;
+    }
+    
+    message GetReviewsResponse {
+        repeated Review reviews = 1;
+    }
+    
+    message Review {
+        string review_id = 1;
+        string user_id = 2;
+        int32 rating = 3;
+        string comment = 4;
+        int64 timestamp = 5;
+    }
+    ```
+  </Tab>
+
+  <Tab title="Service Implementation">
+    ```go
+    package main
+    
+    import (
+        "context"
+        "fmt"
+        "log"
+        "net"
+        "time"
+        
+        "google.golang.org/grpc"
+        pb "github.com/GoogleCloudPlatform/microservices-demo/src/reviewservice/genproto"
+    )
+    
+    type reviewService struct {
+        pb.UnimplementedReviewServiceServer
+        reviews map[string][]*pb.Review
+    }
+    
+    func (s *reviewService) AddReview(ctx context.Context, req *pb.AddReviewRequest) (*pb.AddReviewResponse, error) {
+        reviewID := fmt.Sprintf("review-%d", time.Now().Unix())
+        review := &pb.Review{
+            ReviewId:  reviewID,
+            UserId:    req.UserId,
+            Rating:    req.Rating,
+            Comment:   req.Comment,
+            Timestamp: time.Now().Unix(),
+        }
+        
+        s.reviews[req.ProductId] = append(s.reviews[req.ProductId], review)
+        
+        return &pb.AddReviewResponse{ReviewId: reviewID}, nil
+    }
+    
+    func (s *reviewService) GetReviews(ctx context.Context, req *pb.GetReviewsRequest) (*pb.GetReviewsResponse, error) {
+        reviews := s.reviews[req.ProductId]
+        return &pb.GetReviewsResponse{Reviews: reviews}, nil
+    }
+    
+    func main() {
+        port := "8080"
+        lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+        if err != nil {
+            log.Fatalf("failed to listen: %v", err)
+        }
+        
+        grpcServer := grpc.NewServer()
+        svc := &reviewService{
+            reviews: make(map[string][]*pb.Review),
+        }
+        pb.RegisterReviewServiceServer(grpcServer, svc)
+        
+        log.Printf("ReviewService listening on port %s", port)
+        if err := grpcServer.Serve(lis); err != nil {
+            log.Fatalf("failed to serve: %v", err)
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Service won't build">
+    - Check Dockerfile syntax
+    - Verify all dependencies are available
+    - Check for compilation errors in logs
+    - Ensure base images are accessible
+  </Accordion>
+
+  <Accordion title="Pod won't start">
+    - Check pod events: `kubectl describe pod POD_NAME`
+    - View logs: `kubectl logs POD_NAME`
+    - Verify image was pushed correctly
+    - Check resource limits aren't too low
+  </Accordion>
+
+  <Accordion title="Service not receiving traffic">
+    - Verify service selector matches pod labels
+    - Check service port configuration
+    - Test connectivity from another pod
+    - Verify network policies allow traffic
+  </Accordion>
+
+  <Accordion title="gRPC errors">
+    - Verify proto definitions are correct
+    - Check generated code is up to date
+    - Ensure client and server use same proto version
+    - Check for port conflicts
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    Add tests for your new service
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/operations/monitoring">
+    Set up monitoring and alerts
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Submit your service as a contribution
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Review architecture patterns
+  </Card>
+</CardGroup>

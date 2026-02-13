@@ -1,0 +1,652 @@
+---
+title: Data Flow
+description: Understanding how data flows through the Online Boutique system
+icon: diagram-project
+---
+
+This page explains how data flows through the Online Boutique system, from user requests to database operations and external API calls.
+
+## Request Flow Overview
+
+```mermaid
+graph TB
+    USER[User Browser] -->|HTTP| LB[Load Balancer]
+    LB -->|HTTP| FE[Frontend Service]
+    
+    FE -->|gRPC| PCS[Product Catalog]
+    FE -->|gRPC| CS[Cart Service]
+    FE -->|gRPC| CUS[Currency Service]
+    FE -->|gRPC| RS[Recommendation]
+    FE -->|gRPC| AS[Ad Service]
+    
+    CS -->|TCP| REDIS[(Redis Cache)]
+    CUS -->|HTTP| ECB[European Central Bank API]
+    PCS -->|Read| JSON[products.json]
+    
+    style USER fill:#4285F4,color:#fff
+    style FE fill:#4285F4,color:#fff
+    style REDIS fill:#DC382D,color:#fff
+    style ECB fill:#34A853,color:#fff
+```
+
+## Homepage Load Flow
+
+When a user visits the homepage, multiple services are called in parallel:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant ProductCatalog
+    participant Currency
+    participant Recommendation
+    participant Ad
+    participant Cart
+    
+    User->>Frontend: GET /
+    
+    par Parallel Requests
+        Frontend->>ProductCatalog: ListProducts()
+        Frontend->>Currency: GetSupportedCurrencies()
+        Frontend->>Ad: GetAds(context_keys)
+        Frontend->>Cart: GetCart(user_id)
+    end
+    
+    ProductCatalog-->>Frontend: Product List
+    Currency-->>Frontend: Currency List
+    Ad-->>Frontend: Ads
+    Cart-->>Frontend: Cart Items
+    
+    Frontend->>Recommendation: ListRecommendations(cart_items)
+    Recommendation->>ProductCatalog: GetProduct(product_ids)
+    ProductCatalog-->>Recommendation: Product Details
+    Recommendation-->>Frontend: Recommended Products
+    
+    Frontend->>Currency: Convert(prices, user_currency)
+    Currency-->>Frontend: Converted Prices
+    
+    Frontend-->>User: Rendered HTML Page
+```
+
+**Data Flow Steps**:
+
+1. **User Request**: Browser sends HTTP GET to frontend
+2. **Parallel Service Calls**: Frontend fans out to multiple services
+3. **Product Data**: Product catalog returns list from JSON file
+4. **Currency Data**: Currency service fetches supported currencies
+5. **Ad Data**: Ad service returns contextual advertisements
+6. **Cart Data**: Cart service retrieves user's cart from Redis
+7. **Recommendations**: Recommendation service suggests products based on cart
+8. **Currency Conversion**: All prices converted to user's selected currency
+9. **Response**: Frontend aggregates all data and renders HTML
+
+## Product Search Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant ProductCatalog
+    participant Currency
+    
+    User->>Frontend: Search "shoes"
+    Frontend->>ProductCatalog: SearchProducts(query="shoes")
+    
+    Note over ProductCatalog: Parse products.json<br/>Filter by keyword<br/>Match in name/description
+    
+    ProductCatalog-->>Frontend: Matching Products
+    
+    Frontend->>Currency: Convert(product_prices, user_currency)
+    Currency-->>Frontend: Converted Prices
+    
+    Frontend-->>User: Search Results Page
+```
+
+**Search Algorithm**:
+1. Receive search query from frontend
+2. Load products from JSON file
+3. Filter products where query matches:
+   - Product name (case-insensitive)
+   - Product description (case-insensitive)
+   - Product categories
+4. Return matching products
+5. Convert prices to user's currency
+
+## Add to Cart Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Cart
+    participant Redis
+    participant ProductCatalog
+    
+    User->>Frontend: Add Product to Cart
+    Frontend->>ProductCatalog: GetProduct(product_id)
+    ProductCatalog-->>Frontend: Product Details
+    
+    Frontend->>Cart: AddItem(user_id, product_id, quantity)
+    
+    Note over Cart: Validate product_id<br/>Validate quantity > 0
+    
+    Cart->>Redis: GET cart:user_id
+    Redis-->>Cart: Current Cart
+    
+    Note over Cart: Add/Update item<br/>Serialize cart data
+    
+    Cart->>Redis: SET cart:user_id
+    Redis-->>Cart: OK
+    
+    Cart-->>Frontend: Success
+    Frontend-->>User: Cart Updated
+```
+
+**Cart Data Structure in Redis**:
+```json
+{
+  "user_id": "session_abc123",
+  "items": [
+    {
+      "product_id": "OLJCESPC7Z",
+      "quantity": 2
+    },
+    {
+      "product_id": "66VCHSJNUP",
+      "quantity": 1
+    }
+  ]
+}
+```
+
+**Key**: `cart:{user_id}`  
+**TTL**: 24 hours (configurable)
+
+## Checkout Flow
+
+The checkout process is the most complex data flow, involving 7 services:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Checkout
+    participant Cart
+    participant Product
+    participant Currency
+    participant Payment
+    participant Shipping
+    participant Email
+    participant Redis
+    
+    User->>Frontend: Click Checkout
+    Frontend->>Checkout: PlaceOrder(user_id, address, email, card)
+    
+    Note over Checkout: Start Transaction
+    
+    Checkout->>Cart: GetCart(user_id)
+    Cart->>Redis: GET cart:user_id
+    Redis-->>Cart: Cart Data
+    Cart-->>Checkout: Cart Items
+    
+    Note over Checkout: Validate cart not empty
+    
+    loop For each cart item
+        Checkout->>Product: GetProduct(product_id)
+        Product-->>Checkout: Product Details
+    end
+    
+    Checkout->>Currency: Convert(total, user_currency)
+    Currency-->>Checkout: Converted Amount
+    
+    Checkout->>Shipping: GetQuote(address, items)
+    Shipping-->>Checkout: Shipping Cost
+    
+    Note over Checkout: Calculate Total<br/>= Items + Shipping
+    
+    Checkout->>Payment: Charge(total, card_info)
+    
+    Note over Payment: Validate card<br/>Generate transaction_id
+    
+    Payment-->>Checkout: Transaction ID
+    
+    Checkout->>Shipping: ShipOrder(address, items)
+    Shipping-->>Checkout: Tracking ID
+    
+    Checkout->>Email: SendConfirmation(email, order_details)
+    Email-->>Checkout: Success
+    
+    Checkout->>Cart: EmptyCart(user_id)
+    Cart->>Redis: DEL cart:user_id
+    Redis-->>Cart: OK
+    Cart-->>Checkout: Success
+    
+    Note over Checkout: Commit Transaction
+    
+    Checkout-->>Frontend: Order Result
+    Frontend-->>User: Order Confirmation Page
+```
+
+**Order Data Structure**:
+```json
+{
+  "order_id": "a1b2c3d4-e5f6-7890",
+  "user_id": "session_abc123",
+  "items": [
+    {
+      "product_id": "OLJCESPC7Z",
+      "quantity": 2,
+      "cost": {
+        "currency_code": "USD",
+        "units": 35,
+        "nanos": 990000000
+      }
+    }
+  ],
+  "shipping_address": {
+    "street_address": "1600 Amphitheatre Parkway",
+    "city": "Mountain View",
+    "state": "CA",
+    "country": "US",
+    "zip_code": 94043
+  },
+  "shipping_cost": {
+    "currency_code": "USD",
+    "units": 8,
+    "nanos": 990000000
+  },
+  "shipping_tracking_id": "SHIP-12345",
+  "transaction_id": "TXN-67890"
+}
+```
+
+## Currency Conversion Flow
+
+```mermaid
+sequenceDiagram
+    participant Frontend
+    participant Currency
+    participant Cache
+    participant ECB
+    
+    Frontend->>Currency: Convert(from_amount, to_currency)
+    
+    Currency->>Cache: GET exchange_rates
+    
+    alt Cache Hit
+        Cache-->>Currency: Exchange Rates
+    else Cache Miss
+        Currency->>ECB: GET /stats/eurofxref/eurofxref-daily.xml
+        ECB-->>Currency: Exchange Rates XML
+        
+        Note over Currency: Parse XML<br/>Extract rates<br/>Calculate conversions
+        
+        Currency->>Cache: SET exchange_rates (TTL: 1 hour)
+    end
+    
+    Note over Currency: Calculate:<br/>amount * rate
+    
+    Currency-->>Frontend: Converted Amount
+```
+
+**Exchange Rate Caching**:
+- **Source**: European Central Bank (ECB)
+- **Update Frequency**: Daily
+- **Cache TTL**: 1 hour
+- **Fallback**: Use cached rates if ECB unavailable
+
+**Conversion Formula**:
+```
+converted_amount = original_amount * (target_rate / source_rate)
+```
+
+**Example**:
+```
+$100 USD to EUR
+EUR rate = 0.85
+Converted = 100 * 0.85 = €85
+```
+
+## Recommendation Flow
+
+```mermaid
+sequenceDiagram
+    participant Frontend
+    participant Recommendation
+    participant ProductCatalog
+    
+    Frontend->>Recommendation: ListRecommendations(user_id, cart_product_ids)
+    
+    Note over Recommendation: Extract categories<br/>from cart items
+    
+    loop For each cart item
+        Recommendation->>ProductCatalog: GetProduct(product_id)
+        ProductCatalog-->>Recommendation: Product with Categories
+    end
+    
+    Note over Recommendation: Collect all categories<br/>["clothing", "accessories"]
+    
+    Recommendation->>ProductCatalog: ListProducts()
+    ProductCatalog-->>Recommendation: All Products
+    
+    Note over Recommendation: Filter products by:<br/>- Same categories<br/>- Not in cart<br/>- Random selection (max 5)
+    
+    Recommendation-->>Frontend: Recommended Product IDs
+```
+
+**Recommendation Algorithm**:
+1. Get products currently in cart
+2. Extract categories from cart products
+3. Find all products with matching categories
+4. Exclude products already in cart
+5. Randomly select up to 5 products
+6. Return product IDs
+
+## Data Storage Patterns
+
+### Redis (Cart Service)
+
+**Purpose**: Session-based cart storage
+
+**Data Model**:
+```
+Key: cart:{user_id}
+Value: Serialized Cart protobuf
+TTL: 86400 seconds (24 hours)
+```
+
+**Operations**:
+- `GET cart:{user_id}` - Retrieve cart
+- `SET cart:{user_id}` - Update cart
+- `DEL cart:{user_id}` - Empty cart
+- `EXPIRE cart:{user_id} 86400` - Reset TTL
+
+**Alternative Backends** (via Kustomize):
+- **Spanner**: Globally distributed SQL database
+- **AlloyDB**: PostgreSQL-compatible database
+
+### JSON File (Product Catalog)
+
+**Purpose**: Static product inventory
+
+**Location**: `src/productcatalogservice/products.json`
+
+**Structure**:
+```json
+{
+  "products": [
+    {
+      "id": "OLJCESPC7Z",
+      "name": "Sunglasses",
+      "description": "Add a modern touch...",
+      "picture": "/static/img/products/sunglasses.jpg",
+      "priceUsd": {
+        "currencyCode": "USD",
+        "units": 19,
+        "nanos": 990000000
+      },
+      "categories": ["accessories"]
+    }
+  ]
+}
+```
+
+**Access Pattern**:
+- Load entire file into memory on startup
+- Serve from memory (no disk I/O per request)
+- Optional: Reload on SIGUSR1 signal
+
+### In-Memory (Ad Service)
+
+**Purpose**: Ad inventory
+
+**Structure**:
+```go
+var ads = []Ad{
+    {RedirectUrl: "/product/2ZYFJ3GM2N", Text: "Film camera for sale..."},
+    {RedirectUrl: "/product/0PUK6V6EV0", Text: "Vintage camera lens..."},
+    // ... more ads
+}
+```
+
+**Selection**: Random selection based on context keywords
+
+## Data Consistency
+
+### Session Management
+
+```mermaid
+graph LR
+    A[User Request] --> B{Session Cookie?}
+    B -->|Yes| C[Use Existing Session]
+    B -->|No| D[Generate Session ID]
+    D --> E[Set Cookie]
+    E --> C
+    C --> F[Use Session for Cart]
+    
+    style D fill:#4285F4,color:#fff
+```
+
+**Session ID Format**: `{random_uuid}`  
+**Cookie Name**: `shop_session-id`  
+**Cookie Lifetime**: Session (browser close)
+
+### Cart Consistency
+
+**Problem**: Multiple concurrent cart updates
+
+**Solution**: Redis atomic operations
+
+```go
+// Atomic read-modify-write
+WATCH cart:user_id
+cart = GET cart:user_id
+cart.items.append(new_item)
+MULTI
+SET cart:user_id cart
+EXEC
+```
+
+### Price Consistency
+
+**Challenge**: Prices change during checkout
+
+**Solution**: Calculate prices at checkout time
+1. Retrieve current product prices
+2. Apply current exchange rates
+3. Calculate total
+4. Process payment
+
+**Note**: Prices may differ from cart display to checkout
+
+## External API Integration
+
+### European Central Bank API
+
+**Endpoint**: `https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml`
+
+**Response Format**: XML
+```xml
+<Cube>
+  <Cube time="2024-02-13">
+    <Cube currency="USD" rate="1.0856"/>
+    <Cube currency="JPY" rate="163.26"/>
+    <Cube currency="GBP" rate="0.85668"/>
+  </Cube>
+</Cube>
+```
+
+**Error Handling**:
+- Timeout: 5 seconds
+- Retry: 3 attempts with exponential backoff
+- Fallback: Use cached rates
+- Alert: Log warning if rates > 24 hours old
+
+## Performance Optimizations
+
+### Caching Strategy
+
+```mermaid
+graph TB
+    A[Request] --> B{Cache?}
+    B -->|Hit| C[Return Cached]
+    B -->|Miss| D[Fetch Data]
+    D --> E[Update Cache]
+    E --> F[Return Data]
+    
+    style C fill:#34A853,color:#fff
+    style D fill:#EA4335,color:#fff
+```
+
+**Cached Data**:
+- Exchange rates (1 hour TTL)
+- Product catalog (in-memory, reload on signal)
+- Cart data (24 hour TTL)
+
+### Connection Pooling
+
+**gRPC Connections**:
+- Reuse HTTP/2 connections
+- Connection pool size: 10 per service
+- Idle timeout: 5 minutes
+- Max lifetime: 30 minutes
+
+### Request Batching
+
+**Product Details**:
+- Batch multiple GetProduct calls
+- Reduce round trips
+- Parallel processing
+
+## Data Flow Metrics
+
+### Key Metrics
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| **Request Latency** | Time from user request to response | < 100ms (p95) |
+| **Service Latency** | Time for individual service calls | < 50ms (p95) |
+| **Cache Hit Rate** | Percentage of cache hits | > 90% |
+| **Error Rate** | Percentage of failed requests | < 0.1% |
+| **Throughput** | Requests per second | > 1000 RPS |
+
+### Monitoring Points
+
+```mermaid
+graph LR
+    A[User] -->|1. Request| B[Frontend]
+    B -->|2. gRPC| C[Backend Services]
+    C -->|3. Data Access| D[Storage]
+    D -->|4. Response| C
+    C -->|5. Response| B
+    B -->|6. Response| A
+    
+    M1[Monitor: Response Time] -.-> A
+    M2[Monitor: Service Latency] -.-> C
+    M3[Monitor: Cache Hit Rate] -.-> D
+    
+    style M1 fill:#FBBC04,color:#000
+    style M2 fill:#FBBC04,color:#000
+    style M3 fill:#FBBC04,color:#000
+```
+
+## Error Handling in Data Flow
+
+### Graceful Degradation
+
+```mermaid
+graph TB
+    A[Request] --> B{Service Available?}
+    B -->|Yes| C[Normal Flow]
+    B -->|No| D{Critical Service?}
+    D -->|Yes| E[Return Error]
+    D -->|No| F[Use Fallback]
+    F --> G[Partial Response]
+    
+    style C fill:#34A853,color:#fff
+    style E fill:#EA4335,color:#fff
+    style G fill:#FBBC04,color:#000
+```
+
+**Critical Services** (must succeed):
+- Cart Service (for checkout)
+- Payment Service (for checkout)
+- Product Catalog (for product pages)
+
+**Non-Critical Services** (can fail gracefully):
+- Recommendation Service (show empty recommendations)
+- Ad Service (hide ad section)
+- Currency Service (use default USD)
+
+### Retry Strategy
+
+**Transient Failures**:
+- Max retries: 3
+- Backoff: Exponential (100ms, 200ms, 400ms)
+- Timeout: 5 seconds per attempt
+
+**Circuit Breaker**:
+- Failure threshold: 5 consecutive failures
+- Open duration: 30 seconds
+- Half-open: Allow 1 test request
+
+## Data Security
+
+### Data in Transit
+
+```mermaid
+graph LR
+    A[User Browser] -->|HTTPS/TLS 1.3| B[Load Balancer]
+    B -->|HTTP| C[Frontend Pod]
+    C -->|gRPC| D[Backend Pods]
+    D -->|TCP| E[Redis]
+    
+    style A fill:#34A853,color:#fff
+    style B fill:#34A853,color:#fff
+```
+
+**With Istio Service Mesh**:
+```mermaid
+graph LR
+    A[Service A] -->|mTLS| B[Envoy Proxy]
+    B -->|mTLS| C[Envoy Proxy]
+    C -->|mTLS| D[Service B]
+    
+    style B fill:#4285F4,color:#fff
+    style C fill:#4285F4,color:#fff
+```
+
+### Data at Rest
+
+- **Redis**: Optional encryption at rest
+- **Spanner/AlloyDB**: Automatic encryption
+- **Secrets**: Kubernetes Secrets (base64 encoded)
+
+### Sensitive Data Handling
+
+**Credit Card Information**:
+- Never stored
+- Passed directly to payment service
+- Masked in logs (last 4 digits only)
+
+**Personal Information**:
+- Email addresses: Used only for order confirmation
+- Addresses: Used only for shipping calculation
+- No persistent user accounts
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="User Journeys" icon="route" href="/architecture/user-journeys">
+    See detailed sequence diagrams for key flows
+  </Card>
+  <Card title="Communication Patterns" icon="arrows-left-right" href="/architecture/communication">
+    Learn about gRPC and service communication
+  </Card>
+  <Card title="Microservices" icon="cubes" href="/microservices/overview">
+    Explore individual service implementations
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/overview">
+    Deploy Online Boutique to production
+  </Card>
+</CardGroup>

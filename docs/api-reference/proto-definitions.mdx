@@ -1,0 +1,760 @@
+---
+title: 'Protocol Buffer Definitions'
+description: 'Complete Protocol Buffer message definitions for Online Boutique'
+---
+
+<Note>
+  **What's on this page?** This page shows you all the data structures (messages) used in Online Boutique. Think of each message as a form with specific fields that need to be filled out. We'll explain each one!
+</Note>
+
+## Overview
+
+This page documents all Protocol Buffer message types used in Online Boutique. These messages define the structure of data exchanged between services.
+
+<Tip>
+  **Reading Tip:** Don't try to memorize everything! Use this page as a reference when you need to know what fields a particular message has. Bookmark it and come back when needed.
+</Tip>
+
+<Info>
+  All definitions are from `protos/demo.proto` using proto3 syntax.
+</Info>
+
+## Common Types
+
+These are the basic building blocks used throughout the application. You'll see them referenced in many other messages.
+
+### Money
+
+Represents a monetary amount with currency information.
+
+<Tip>
+  **Beginner Tip:** Money in computers is tricky! We can't just use decimals like "19.99" because computers can make rounding errors. Instead, we split money into two parts: whole dollars (units) and fractional parts (nanos).
+</Tip>
+
+```protobuf
+message Money {
+    string currency_code = 1;
+    int64 units = 2;
+    int32 nanos = 3;
+}
+```
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `currency_code` | string | 3-letter ISO 4217 currency code | "USD", "EUR", "JPY" |
+| `units` | int64 | Whole units of the amount | 19 (for $19.99) |
+| `nanos` | int32 | Nano units (10^-9) of the amount. Range: -999,999,999 to +999,999,999 | 990000000 (for $0.99) |
+
+**Examples:**
+
+<Tabs>
+  <Tab title="$19.99 USD">
+    ```json
+    {
+      "currency_code": "USD",
+      "units": 19,
+      "nanos": 990000000
+    }
+    ```
+    **Breakdown:** $19 (units) + $0.99 (nanos) = $19.99
+  </Tab>
+
+  <Tab title="€50.00 EUR">
+    ```json
+    {
+      "currency_code": "EUR",
+      "units": 50,
+      "nanos": 0
+    }
+    ```
+    **Breakdown:** €50 (units) + €0.00 (nanos) = €50.00
+  </Tab>
+
+  <Tab title="-$1.75 USD (refund)">
+    ```json
+    {
+      "currency_code": "USD",
+      "units": -1,
+      "nanos": -750000000
+    }
+    ```
+    **Breakdown:** -$1 (units) + -$0.75 (nanos) = -$1.75
+  </Tab>
+</Tabs>
+
+<Warning>
+  **Important Rule:** If `units` is positive, `nanos` must be positive or zero. If `units` is negative, `nanos` must be negative or zero. Both parts must have the same sign!
+</Warning>
+
+<Note>
+  **Converting Cents to Nanos:** Multiply cents by 10,000,000
+  - 1 cent = 10,000,000 nanos
+  - 99 cents = 990,000,000 nanos
+  - Formula: `nanos = cents × 10,000,000`
+</Note>
+
+### Address
+
+Represents a physical shipping address.
+
+```protobuf
+message Address {
+    string street_address = 1;
+    string city = 2;
+    string state = 3;
+    string country = 4;
+    int32 zip_code = 5;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `street_address` | string | Street address including number and street name |
+| `city` | string | City name |
+| `state` | string | State or province |
+| `country` | string | Country name |
+| `zip_code` | int32 | Postal/ZIP code |
+
+**Example:**
+
+```json
+{
+  "street_address": "1600 Amphitheatre Parkway",
+  "city": "Mountain View",
+  "state": "CA",
+  "country": "United States",
+  "zip_code": 94043
+}
+```
+
+### Empty
+
+Used for methods that don't require request or response data.
+
+```protobuf
+message Empty {}
+```
+
+## Cart Service Messages
+
+### CartItem
+
+Represents a single item in a shopping cart.
+
+```protobuf
+message CartItem {
+    string product_id = 1;
+    int32 quantity = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `product_id` | string | Unique identifier of the product |
+| `quantity` | int32 | Number of units of this product |
+
+### Cart
+
+Represents a user's shopping cart.
+
+```protobuf
+message Cart {
+    string user_id = 1;
+    repeated CartItem items = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | string | Unique identifier of the user |
+| `items` | CartItem[] | List of items in the cart |
+
+### AddItemRequest
+
+Request to add an item to a cart.
+
+```protobuf
+message AddItemRequest {
+    string user_id = 1;
+    CartItem item = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | string | User's unique identifier |
+| `item` | CartItem | Item to add to the cart |
+
+### GetCartRequest
+
+Request to retrieve a user's cart.
+
+```protobuf
+message GetCartRequest {
+    string user_id = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | string | User's unique identifier |
+
+### EmptyCartRequest
+
+Request to empty a user's cart.
+
+```protobuf
+message EmptyCartRequest {
+    string user_id = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | string | User's unique identifier |
+
+## Product Catalog Messages
+
+### Product
+
+Represents a product in the catalog.
+
+```protobuf
+message Product {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    string picture = 4;
+    Money price_usd = 5;
+    repeated string categories = 6;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique product identifier |
+| `name` | string | Product name |
+| `description` | string | Product description |
+| `picture` | string | URL or path to product image |
+| `price_usd` | Money | Product price in USD |
+| `categories` | string[] | Product categories (e.g., "clothing", "kitchen") |
+
+**Example:**
+
+```json
+{
+  "id": "OLJCESPC7Z",
+  "name": "Vintage Typewriter",
+  "description": "This typewriter looks good in your living room.",
+  "picture": "/static/img/products/typewriter.jpg",
+  "price_usd": {
+    "currency_code": "USD",
+    "units": 67,
+    "nanos": 990000000
+  },
+  "categories": ["vintage"]
+}
+```
+
+### ListProductsResponse
+
+Response containing a list of products.
+
+```protobuf
+message ListProductsResponse {
+    repeated Product products = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `products` | Product[] | List of all products |
+
+### GetProductRequest
+
+Request to get a specific product.
+
+```protobuf
+message GetProductRequest {
+    string id = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Product identifier |
+
+### SearchProductsRequest
+
+Request to search for products.
+
+```protobuf
+message SearchProductsRequest {
+    string query = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | Search query string |
+
+### SearchProductsResponse
+
+Response containing search results.
+
+```protobuf
+message SearchProductsResponse {
+    repeated Product results = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `results` | Product[] | Products matching the search query |
+
+## Recommendation Service Messages
+
+### ListRecommendationsRequest
+
+Request for product recommendations.
+
+```protobuf
+message ListRecommendationsRequest {
+    string user_id = 1;
+    repeated string product_ids = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | string | User's unique identifier |
+| `product_ids` | string[] | List of product IDs to base recommendations on |
+
+### ListRecommendationsResponse
+
+Response containing recommended products.
+
+```protobuf
+message ListRecommendationsResponse {
+    repeated string product_ids = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `product_ids` | string[] | List of recommended product IDs |
+
+## Shipping Service Messages
+
+### GetQuoteRequest
+
+Request for a shipping cost quote.
+
+```protobuf
+message GetQuoteRequest {
+    Address address = 1;
+    repeated CartItem items = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `address` | Address | Shipping destination address |
+| `items` | CartItem[] | Items to be shipped |
+
+### GetQuoteResponse
+
+Response with shipping cost.
+
+```protobuf
+message GetQuoteResponse {
+    Money cost_usd = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cost_usd` | Money | Shipping cost in USD |
+
+### ShipOrderRequest
+
+Request to ship an order.
+
+```protobuf
+message ShipOrderRequest {
+    Address address = 1;
+    repeated CartItem items = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `address` | Address | Shipping destination address |
+| `items` | CartItem[] | Items to ship |
+
+### ShipOrderResponse
+
+Response with tracking information.
+
+```protobuf
+message ShipOrderResponse {
+    string tracking_id = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tracking_id` | string | Shipment tracking identifier |
+
+## Currency Service Messages
+
+### GetSupportedCurrenciesResponse
+
+Response with list of supported currencies.
+
+```protobuf
+message GetSupportedCurrenciesResponse {
+    repeated string currency_codes = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `currency_codes` | string[] | List of ISO 4217 currency codes |
+
+**Example:**
+
+```json
+{
+  "currency_codes": ["USD", "EUR", "GBP", "JPY", "CAD"]
+}
+```
+
+### CurrencyConversionRequest
+
+Request to convert currency.
+
+```protobuf
+message CurrencyConversionRequest {
+    Money from = 1;
+    string to_code = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `from` | Money | Amount to convert |
+| `to_code` | string | Target currency code (ISO 4217) |
+
+**Example:**
+
+```json
+{
+  "from": {
+    "currency_code": "USD",
+    "units": 100,
+    "nanos": 0
+  },
+  "to_code": "EUR"
+}
+```
+
+## Payment Service Messages
+
+### CreditCardInfo
+
+Credit card information for payment.
+
+```protobuf
+message CreditCardInfo {
+    string credit_card_number = 1;
+    int32 credit_card_cvv = 2;
+    int32 credit_card_expiration_year = 3;
+    int32 credit_card_expiration_month = 4;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `credit_card_number` | string | Credit card number (with or without hyphens) |
+| `credit_card_cvv` | int32 | Card verification value (3-4 digits) |
+| `credit_card_expiration_year` | int32 | Expiration year (4 digits, e.g., 2025) |
+| `credit_card_expiration_month` | int32 | Expiration month (1-12) |
+
+<Warning>
+  This is a demo application. Never store or log real credit card information in production.
+</Warning>
+
+### ChargeRequest
+
+Request to charge a credit card.
+
+```protobuf
+message ChargeRequest {
+    Money amount = 1;
+    CreditCardInfo credit_card = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `amount` | Money | Amount to charge |
+| `credit_card` | CreditCardInfo | Credit card information |
+
+### ChargeResponse
+
+Response with transaction details.
+
+```protobuf
+message ChargeResponse {
+    string transaction_id = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `transaction_id` | string | Unique transaction identifier (UUID) |
+
+## Email Service Messages
+
+### OrderItem
+
+Represents an item in an order.
+
+```protobuf
+message OrderItem {
+    CartItem item = 1;
+    Money cost = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `item` | CartItem | The cart item |
+| `cost` | Money | Total cost for this item (price × quantity) |
+
+### OrderResult
+
+Complete order information.
+
+```protobuf
+message OrderResult {
+    string order_id = 1;
+    string shipping_tracking_id = 2;
+    Money shipping_cost = 3;
+    Address shipping_address = 4;
+    repeated OrderItem items = 5;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `order_id` | string | Unique order identifier |
+| `shipping_tracking_id` | string | Shipment tracking number |
+| `shipping_cost` | Money | Cost of shipping |
+| `shipping_address` | Address | Delivery address |
+| `items` | OrderItem[] | Items in the order |
+
+### SendOrderConfirmationRequest
+
+Request to send order confirmation email.
+
+```protobuf
+message SendOrderConfirmationRequest {
+    string email = 1;
+    OrderResult order = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `email` | string | Recipient email address |
+| `order` | OrderResult | Order details to include in email |
+
+## Checkout Service Messages
+
+### PlaceOrderRequest
+
+Request to place an order.
+
+```protobuf
+message PlaceOrderRequest {
+    string user_id = 1;
+    string user_currency = 2;
+    Address address = 3;
+    string email = 5;
+    CreditCardInfo credit_card = 6;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | string | User's unique identifier |
+| `user_currency` | string | User's preferred currency code |
+| `address` | Address | Shipping address |
+| `email` | string | User's email for confirmation |
+| `credit_card` | CreditCardInfo | Payment information |
+
+<Note>
+  Field number 4 is skipped in the original proto definition.
+</Note>
+
+### PlaceOrderResponse
+
+Response with order details.
+
+```protobuf
+message PlaceOrderResponse {
+    OrderResult order = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `order` | OrderResult | Complete order information |
+
+## Ad Service Messages
+
+### Ad
+
+Represents an advertisement.
+
+```protobuf
+message Ad {
+    string redirect_url = 1;
+    string text = 2;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `redirect_url` | string | URL to redirect to when ad is clicked |
+| `text` | string | Short advertisement text to display |
+
+**Example:**
+
+```json
+{
+  "redirect_url": "/product/2ZYFJ3GM2N",
+  "text": "Film camera for sale. 50% off."
+}
+```
+
+### AdRequest
+
+Request for advertisements.
+
+```protobuf
+message AdRequest {
+    repeated string context_keys = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `context_keys` | string[] | Keywords describing the current page context |
+
+**Example:**
+
+```json
+{
+  "context_keys": ["photography", "camera", "vintage"]
+}
+```
+
+### AdResponse
+
+Response containing advertisements.
+
+```protobuf
+message AdResponse {
+    repeated Ad ads = 1;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ads` | Ad[] | List of relevant advertisements |
+
+## Field Type Reference
+
+### Scalar Types
+
+| Proto Type | Go | Python | Java | C# | Node.js |
+|------------|-----|--------|------|-----|---------|
+| `string` | string | str | String | string | string |
+| `int32` | int32 | int | int | int | number |
+| `int64` | int64 | int | long | long | number |
+| `bool` | bool | bool | boolean | bool | boolean |
+| `bytes` | []byte | bytes | ByteString | ByteString | Buffer |
+
+### Special Keywords
+
+- `repeated`: Indicates a list/array of values
+- `message`: Defines a structured data type
+- `service`: Defines a gRPC service with RPC methods
+
+## Usage Examples
+
+### Creating Messages in Code
+
+<Tabs>
+  <Tab title="Go">
+    ```go
+    product := &pb.Product{
+        Id:          "OLJCESPC7Z",
+        Name:        "Vintage Typewriter",
+        Description: "Classic typewriter",
+        PriceUsd: &pb.Money{
+            CurrencyCode: "USD",
+            Units:        67,
+            Nanos:        990000000,
+        },
+        Categories: []string{"vintage"},
+    }
+    ```
+  </Tab>
+
+  <Tab title="Python">
+    ```python
+    product = demo_pb2.Product(
+        id="OLJCESPC7Z",
+        name="Vintage Typewriter",
+        description="Classic typewriter",
+        price_usd=demo_pb2.Money(
+            currency_code="USD",
+            units=67,
+            nanos=990000000
+        ),
+        categories=["vintage"]
+    )
+    ```
+  </Tab>
+
+  <Tab title="Node.js">
+    ```javascript
+    const product = {
+        id: "OLJCESPC7Z",
+        name: "Vintage Typewriter",
+        description: "Classic typewriter",
+        price_usd: {
+            currency_code: "USD",
+            units: 67,
+            nanos: 990000000
+        },
+        categories: ["vintage"]
+    };
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="gRPC Services" icon="server" href="/api-reference/grpc-services">
+    Explore all gRPC service methods and their usage
+  </Card>
+  <Card title="API Overview" icon="book" href="/api-reference/overview">
+    Learn about gRPC and Protocol Buffers basics
+  </Card>
+</CardGroup>

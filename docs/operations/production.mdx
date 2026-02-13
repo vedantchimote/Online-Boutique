@@ -1,0 +1,826 @@
+---
+title: 'Production Best Practices'
+description: 'Security, reliability, and performance optimization for production deployments'
+---
+
+## Overview
+
+Running Online Boutique in production requires careful attention to security, reliability, and performance. This guide covers essential best practices for production deployments.
+
+<Warning>
+  **Important:** Online Boutique is a demo application. Some features (like payment processing) are mocked and not production-ready. Use this guide to understand production concepts, but implement real payment/shipping integrations before going live.
+</Warning>
+
+## Production Readiness Checklist
+
+<Steps>
+  <Step title="Security">
+    - [ ] TLS/SSL enabled for all external traffic
+    - [ ] Network policies configured
+    - [ ] Secrets stored securely (not in code)
+    - [ ] RBAC configured
+    - [ ] Container images scanned for vulnerabilities
+    - [ ] Pod security policies applied
+  </Step>
+
+  <Step title="Reliability">
+    - [ ] Resource limits set on all pods
+    - [ ] Horizontal Pod Autoscaling configured
+    - [ ] Health checks (readiness/liveness) defined
+    - [ ] PodDisruptionBudgets set
+    - [ ] Multi-zone deployment
+    - [ ] Backup and disaster recovery plan
+  </Step>
+
+  <Step title="Observability">
+    - [ ] Metrics collection enabled
+    - [ ] Distributed tracing configured
+    - [ ] Log aggregation set up
+    - [ ] Dashboards created
+    - [ ] Alerts configured
+    - [ ] On-call rotation established
+  </Step>
+
+  <Step title="Performance">
+    - [ ] Resource requests tuned
+    - [ ] Caching enabled
+    - [ ] Database connection pooling
+    - [ ] CDN for static assets
+    - [ ] Load testing completed
+  </Step>
+</Steps>
+
+## Security
+
+### 1. Network Security
+
+<Tabs>
+  <Tab title="Network Policies">
+    Restrict traffic between services:
+    
+    ```yaml
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: frontend-policy
+    spec:
+      podSelector:
+        matchLabels:
+          app: frontend
+      policyTypes:
+      - Ingress
+      - Egress
+      ingress:
+      - from:
+        - podSelector:
+            matchLabels:
+              app: loadbalancer
+        ports:
+        - protocol: TCP
+          port: 8080
+      egress:
+      - to:
+        - podSelector:
+            matchLabels:
+              app: cartservice
+        ports:
+        - protocol: TCP
+          port: 7070
+      - to:
+        - podSelector:
+            matchLabels:
+              app: productcatalogservice
+        ports:
+        - protocol: TCP
+          port: 3550
+    ```
+  </Tab>
+
+  <Tab title="TLS/SSL">
+    Enable HTTPS with cert-manager:
+    
+    ```bash
+    # Install cert-manager
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+    
+    # Create ClusterIssuer
+    kubectl apply -f - <<EOF
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+      name: letsencrypt-prod
+    spec:
+      acme:
+        server: https://acme-v02.api.letsencrypt.org/directory
+        email: your-email@example.com
+        privateKeySecretRef:
+          name: letsencrypt-prod
+        solvers:
+        - http01:
+            ingress:
+              class: nginx
+    EOF
+    
+    # Create Ingress with TLS
+    kubectl apply -f - <<EOF
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: frontend-ingress
+      annotations:
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    spec:
+      tls:
+      - hosts:
+        - boutique.example.com
+        secretName: frontend-tls
+      rules:
+      - host: boutique.example.com
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+    EOF
+    ```
+  </Tab>
+
+  <Tab title="Service Mesh (Istio)">
+    Automatic mTLS between services:
+    
+    ```yaml
+    apiVersion: security.istio.io/v1beta1
+    kind: PeerAuthentication
+    metadata:
+      name: default
+      namespace: default
+    spec:
+      mtls:
+        mode: STRICT
+    ```
+    
+    All service-to-service communication is now encrypted.
+  </Tab>
+</Tabs>
+
+### 2. Secrets Management
+
+<Tabs>
+  <Tab title="Kubernetes Secrets">
+    ```bash
+    # Create secret
+    kubectl create secret generic payment-api-key \
+      --from-literal=api-key='your-secret-key'
+    
+    # Use in pod
+    ```
+    
+    ```yaml
+    env:
+    - name: PAYMENT_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: payment-api-key
+          key: api-key
+    ```
+  </Tab>
+
+  <Tab title="Google Secret Manager">
+    ```bash
+    # Store secret
+    echo -n "your-secret-key" | gcloud secrets create payment-api-key --data-file=-
+    
+    # Grant access
+    gcloud secrets add-iam-policy-binding payment-api-key \
+      --member="serviceAccount:your-sa@project.iam.gserviceaccount.com" \
+      --role="roles/secretmanager.secretAccessor"
+    ```
+    
+    ```yaml
+    # Use with Workload Identity
+    env:
+    - name: PAYMENT_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: payment-api-key
+          key: latest
+    ```
+  </Tab>
+
+  <Tab title="HashiCorp Vault">
+    ```bash
+    # Install Vault
+    helm install vault hashicorp/vault
+    
+    # Store secret
+    vault kv put secret/payment api-key="your-secret-key"
+    
+    # Inject into pod
+    ```
+    
+    ```yaml
+    annotations:
+      vault.hashicorp.com/agent-inject: "true"
+      vault.hashicorp.com/role: "payment-service"
+      vault.hashicorp.com/agent-inject-secret-config: "secret/payment"
+    ```
+  </Tab>
+</Tabs>
+
+### 3. Container Security
+
+<AccordionGroup>
+  <Accordion title="Use Non-Root Users">
+    ```dockerfile
+    # In Dockerfile
+    USER 1000:1000
+    ```
+    
+    ```yaml
+    # In Kubernetes
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+    ```
+  </Accordion>
+
+  <Accordion title="Read-Only Root Filesystem">
+    ```yaml
+    securityContext:
+      readOnlyRootFilesystem: true
+      
+    # Add writable volumes where needed
+    volumeMounts:
+    - name: tmp
+      mountPath: /tmp
+    volumes:
+    - name: tmp
+      emptyDir: {}
+    ```
+  </Accordion>
+
+  <Accordion title="Drop Capabilities">
+    ```yaml
+    securityContext:
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - NET_BIND_SERVICE  # Only if needed
+    ```
+  </Accordion>
+
+  <Accordion title="Scan Images">
+    ```bash
+    # Using Trivy
+    trivy image gcr.io/google-samples/microservices-demo/frontend:v0.8.0
+    
+    # Using Snyk
+    snyk container test gcr.io/google-samples/microservices-demo/frontend:v0.8.0
+    
+    # In CI/CD
+    - name: Scan image
+      run: |
+        trivy image --severity HIGH,CRITICAL --exit-code 1 $IMAGE
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Reliability
+
+### 1. Resource Management
+
+<Tabs>
+  <Tab title="Resource Requests & Limits">
+    ```yaml
+    resources:
+      requests:
+        cpu: 100m        # Guaranteed CPU
+        memory: 128Mi    # Guaranteed memory
+      limits:
+        cpu: 200m        # Maximum CPU
+        memory: 256Mi    # Maximum memory (hard limit)
+    ```
+    
+    **Guidelines:**
+    - Set requests based on average usage
+    - Set limits 1.5-2x requests
+    - Monitor actual usage and adjust
+    - Don't set limits too low (causes throttling)
+  </Tab>
+
+  <Tab title="Quality of Service">
+    Kubernetes assigns QoS classes:
+    
+    **Guaranteed** (highest priority):
+    ```yaml
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 100m      # Same as request
+        memory: 128Mi  # Same as request
+    ```
+    
+    **Burstable** (medium priority):
+    ```yaml
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m      # Higher than request
+        memory: 256Mi
+    ```
+    
+    **BestEffort** (lowest priority):
+    ```yaml
+    # No resources specified
+    ```
+  </Tab>
+
+  <Tab title="Recommended Values">
+    Based on load testing:
+    
+    ```yaml
+    # Frontend
+    resources:
+      requests: {cpu: 100m, memory: 64Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+    
+    # Cart Service
+    resources:
+      requests: {cpu: 200m, memory: 64Mi}
+      limits: {cpu: 300m, memory: 128Mi}
+    
+    # Checkout Service
+    resources:
+      requests: {cpu: 100m, memory: 64Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+    
+    # Product Catalog
+    resources:
+      requests: {cpu: 100m, memory: 64Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+    ```
+  </Tab>
+</Tabs>
+
+### 2. Autoscaling
+
+<Tabs>
+  <Tab title="Horizontal Pod Autoscaler">
+    ```yaml
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: frontend-hpa
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: frontend
+      minReplicas: 2
+      maxReplicas: 10
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 80
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+          - type: Percent
+            value: 50
+            periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+    ```
+  </Tab>
+
+  <Tab title="Vertical Pod Autoscaler">
+    ```yaml
+    apiVersion: autoscaling.k8s.io/v1
+    kind: VerticalPodAutoscaler
+    metadata:
+      name: frontend-vpa
+    spec:
+      targetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: frontend
+      updatePolicy:
+        updateMode: "Auto"  # or "Recreate" or "Off"
+      resourcePolicy:
+        containerPolicies:
+        - containerName: server
+          minAllowed:
+            cpu: 50m
+            memory: 64Mi
+          maxAllowed:
+            cpu: 500m
+            memory: 512Mi
+    ```
+  </Tab>
+
+  <Tab title="Cluster Autoscaler">
+    ```bash
+    # Enable on GKE
+    gcloud container clusters update CLUSTER_NAME \
+      --enable-autoscaling \
+      --min-nodes 3 \
+      --max-nodes 10 \
+      --zone ZONE
+    
+    # On other platforms, install cluster-autoscaler
+    helm install cluster-autoscaler autoscaler/cluster-autoscaler \
+      --set autoDiscovery.clusterName=CLUSTER_NAME
+    ```
+  </Tab>
+</Tabs>
+
+### 3. High Availability
+
+<AccordionGroup>
+  <Accordion title="Multiple Replicas">
+    ```yaml
+    spec:
+      replicas: 3  # Minimum for HA
+    ```
+    
+    **Best practices:**
+    - Run at least 2 replicas (3+ for critical services)
+    - Use odd numbers for quorum-based systems
+    - Spread across availability zones
+  </Accordion>
+
+  <Accordion title="Pod Disruption Budgets">
+    ```yaml
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: frontend-pdb
+    spec:
+      minAvailable: 2  # or maxUnavailable: 1
+      selector:
+        matchLabels:
+          app: frontend
+    ```
+    
+    Prevents too many pods from being down during:
+    - Node maintenance
+    - Cluster upgrades
+    - Voluntary disruptions
+  </Accordion>
+
+  <Accordion title="Pod Anti-Affinity">
+    ```yaml
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app: frontend
+            topologyKey: kubernetes.io/hostname
+    ```
+    
+    Spreads pods across different nodes/zones.
+  </Accordion>
+
+  <Accordion title="Health Checks">
+    ```yaml
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 2
+    ```
+    
+    **Liveness:** Restart if unhealthy
+    **Readiness:** Remove from load balancer if not ready
+  </Accordion>
+</AccordionGroup>
+
+## Performance
+
+### 1. Caching
+
+<Tabs>
+  <Tab title="Redis for Cart Data">
+    Already implemented in Cart Service:
+    
+    ```yaml
+    env:
+    - name: REDIS_ADDR
+      value: "redis-cart:6379"
+    ```
+    
+    **Optimization:**
+    - Use Redis Cluster for high availability
+    - Set appropriate TTLs
+    - Monitor cache hit rate
+  </Tab>
+
+  <Tab title="Product Catalog Caching">
+    Add in-memory caching:
+    
+    ```go
+    // Example in Go
+    var productCache = cache.New(5*time.Minute, 10*time.Minute)
+    
+    func GetProduct(id string) (*Product, error) {
+        // Check cache first
+        if cached, found := productCache.Get(id); found {
+            return cached.(*Product), nil
+        }
+        
+        // Fetch from source
+        product, err := fetchProduct(id)
+        if err != nil {
+            return nil, err
+        }
+        
+        // Store in cache
+        productCache.Set(id, product, cache.DefaultExpiration)
+        return product, nil
+    }
+    ```
+  </Tab>
+
+  <Tab title="CDN for Static Assets">
+    ```yaml
+    # Use Cloud CDN on GKE
+    apiVersion: cloud.google.com/v1
+    kind: BackendConfig
+    metadata:
+      name: frontend-backendconfig
+    spec:
+      cdn:
+        enabled: true
+        cachePolicy:
+          includeHost: true
+          includeProtocol: true
+          includeQueryString: false
+        negativeCaching: true
+    ```
+  </Tab>
+</Tabs>
+
+### 2. Database Optimization
+
+<AccordionGroup>
+  <Accordion title="Connection Pooling">
+    ```go
+    // Configure connection pool
+    db.SetMaxOpenConns(25)
+    db.SetMaxIdleConns(5)
+    db.SetConnMaxLifetime(5 * time.Minute)
+    ```
+    
+    **Guidelines:**
+    - Max connections = (available_connections / number_of_instances)
+    - Keep idle connections low
+    - Set connection lifetime to prevent stale connections
+  </Accordion>
+
+  <Accordion title="Query Optimization">
+    - Add indexes on frequently queried fields
+    - Use prepared statements
+    - Avoid N+1 queries
+    - Batch operations when possible
+    - Use read replicas for read-heavy workloads
+  </Accordion>
+
+  <Accordion title="Use Managed Databases">
+    For production, use managed services:
+    - **Google Cloud SQL** for PostgreSQL/MySQL
+    - **Cloud Spanner** for global scale
+    - **Memorystore** for Redis
+    - **AlloyDB** for high performance
+  </Accordion>
+</Accordion>
+
+### 3. Load Testing
+
+<Steps>
+  <Step title="Install Load Testing Tool">
+    ```bash
+    # Locust (already included in Online Boutique)
+    kubectl apply -f ./release/kubernetes-manifests.yaml
+    
+    # Or use k6
+    brew install k6
+    
+    # Or use Apache JMeter
+    wget https://jmeter.apache.org/download_jmeter.cgi
+    ```
+  </Step>
+
+  <Step title="Create Load Test">
+    ```javascript
+    // k6 example
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    
+    export let options = {
+      stages: [
+        { duration: '2m', target: 100 },  // Ramp up
+        { duration: '5m', target: 100 },  // Stay at 100 users
+        { duration: '2m', target: 200 },  // Ramp to 200
+        { duration: '5m', target: 200 },  // Stay at 200
+        { duration: '2m', target: 0 },    // Ramp down
+      ],
+    };
+    
+    export default function () {
+      let response = http.get('http://frontend/');
+      check(response, {
+        'status is 200': (r) => r.status === 200,
+        'response time < 500ms': (r) => r.timings.duration < 500,
+      });
+      sleep(1);
+    }
+    ```
+  </Step>
+
+  <Step title="Run Load Test">
+    ```bash
+    k6 run --vus 100 --duration 10m loadtest.js
+    ```
+    
+    Monitor:
+    - Response times (P50, P95, P99)
+    - Error rates
+    - Resource usage (CPU, memory)
+    - Autoscaling behavior
+  </Step>
+
+  <Step title="Analyze Results">
+    Look for:
+    - Bottlenecks (which service is slowest?)
+    - Resource limits being hit
+    - Error rate increases
+    - Optimal replica counts
+  </Step>
+</Steps>
+
+## Cost Optimization
+
+<AccordionGroup>
+  <Accordion title="Right-Size Resources">
+    - Use VPA to find optimal resource requests
+    - Remove unused services
+    - Scale down non-production environments
+    - Use spot/preemptible instances for non-critical workloads
+  </Accordion>
+
+  <Accordion title="Use Autoscaling">
+    - HPA to scale based on demand
+    - Cluster autoscaler to add/remove nodes
+    - Schedule scale-down during off-hours
+  </Accordion>
+
+  <Accordion title="Optimize Storage">
+    - Use appropriate storage classes
+    - Clean up old logs and metrics
+    - Compress backups
+    - Use lifecycle policies
+  </Accordion>
+
+  <Accordion title="Monitor Costs">
+    ```bash
+    # GKE cost breakdown
+    gcloud billing accounts list
+    gcloud billing projects describe PROJECT_ID
+    
+    # Use cost allocation tags
+    kubectl label namespace default cost-center=engineering
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Deployment Strategies
+
+<Tabs>
+  <Tab title="Rolling Update">
+    Default strategy - gradual replacement:
+    
+    ```yaml
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 1        # Max pods above desired
+        maxUnavailable: 0  # Max pods unavailable
+    ```
+    
+    **Pros:** Zero downtime, automatic rollback
+    **Cons:** Slow, mixed versions running
+  </Tab>
+
+  <Tab title="Blue-Green">
+    Run two identical environments:
+    
+    ```bash
+    # Deploy green
+    kubectl apply -f deployment-green.yaml
+    
+    # Test green
+    kubectl port-forward svc/frontend-green 8080:80
+    
+    # Switch traffic
+    kubectl patch svc frontend -p '{"spec":{"selector":{"version":"green"}}}'
+    
+    # Rollback if needed
+    kubectl patch svc frontend -p '{"spec":{"selector":{"version":"blue"}}}'
+    ```
+    
+    **Pros:** Instant rollback, test before switch
+    **Cons:** 2x resources, complex setup
+  </Tab>
+
+  <Tab title="Canary">
+    Gradually shift traffic to new version:
+    
+    ```yaml
+    # Using Istio
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+      name: frontend
+    spec:
+      hosts:
+      - frontend
+      http:
+      - match:
+        - headers:
+            canary:
+              exact: "true"
+        route:
+        - destination:
+            host: frontend
+            subset: v2
+      - route:
+        - destination:
+            host: frontend
+            subset: v1
+          weight: 90
+        - destination:
+            host: frontend
+            subset: v2
+          weight: 10
+    ```
+    
+    **Pros:** Low risk, gradual rollout
+    **Cons:** Complex, requires service mesh
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Monitoring" icon="chart-line" href="/operations/monitoring">
+    Set up comprehensive monitoring
+  </Card>
+  <Card title="Observability" icon="magnifying-glass" href="/operations/observability">
+    Configure tracing and logging
+  </Card>
+  <Card title="Incident Response" icon="siren" href="/operations/incident-response">
+    Prepare for incidents
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/overview">
+    Review deployment options
+  </Card>
+</CardGroup>
